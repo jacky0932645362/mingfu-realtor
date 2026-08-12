@@ -1,0 +1,666 @@
+.page {
+  min-height: 100vh;
+  background: #f4f8fa;
+  color: #231815;
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  padding: 24px 16px 48px;
+}
+
+.shell {
+  width: min(100%, 760px);
+  margin: 0 auto;
+}
+
+.header {
+  padding: 8px 2px 24px;
+  border-bottom: 1px solid #e8dedd;
+}
+
+.brand {
+  color: #a50000;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.title {
+  margin: 7px 0 8px;
+  font-size: clamp(26px, 5vw, 34px);
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.lead {
+  margin: 0;
+  color: #574a46;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.progress {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin: 18px 0 4px;
+}
+
+.progressItem {
+  min-width: 0;
+  color: #8a7a76;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.progressBar {
+  display: block;
+  height: 4px;
+  margin-bottom: 7px;
+  border-radius: 2px;
+  background: #dbe5e9;
+}
+
+.progressItemActive {
+  color: #a50000;
+}
+
+.progressItemActive .progressBar {
+  background: #e00000;
+}
+
+.form {
+  margin-top: 8px;
+}
+
+.section {
+  padding: 24px 2px;
+  border-bottom: 1px solid #e8dedd;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: 16px;
+}
+
+.step {
+  display: inline-flex;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #a50000;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sectionTitle {
+  margin: 1px 0 2px;
+  font-size: 18px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.sectionHint {
+  margin: 0;
+  color: #6b5b57;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.optionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.optionGridTwo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.option {
+  min-height: 74px;
+  padding: 12px 13px;
+  border: 1.5px solid #ddd0cf;
+  border-radius: 8px;
+  background: #fff;
+  color: #263b49;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.option:hover {
+  border-color: #e00000;
+}
+
+.optionActive {
+  border-color: #a50000;
+  background: #fdf2f3;
+  box-shadow: inset 0 0 0 1px #a50000;
+}
+
+.optionDisabled {
+  background: #edf1f3;
+  color: #8a7a76;
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
+.optionTitle {
+  display: block;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.optionDescription {
+  display: block;
+  margin-top: 4px;
+  color: #657783;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.field {
+  margin-top: 15px;
+}
+
+.field:first-child {
+  margin-top: 0;
+}
+
+.label {
+  display: block;
+  margin-bottom: 7px;
+  color: #4a3b37;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.optional {
+  color: #8a7a76;
+  font-weight: 600;
+}
+
+.input,
+.textarea,
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1.5px solid #bdced6;
+  border-radius: 8px;
+  background: #fff;
+  color: #231815;
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+  padding: 12px 13px;
+}
+
+.textarea {
+  min-height: 104px;
+  line-height: 1.65;
+  resize: vertical;
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+  border-color: #a50000;
+  box-shadow: 0 0 0 3px rgba(78, 196, 220, 0.2);
+}
+
+.inputError {
+  border-color: #c9473e;
+}
+
+.fieldError {
+  margin: 6px 0 0;
+  color: #b8322a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.inlineNotice,
+.errorNotice,
+.successNotice,
+.warningNotice {
+  margin: 12px 0 0;
+  border: 1px solid #ddd0cf;
+  border-radius: 8px;
+  background: #fff;
+  color: #4a3b37;
+  font-size: 14px;
+  line-height: 1.7;
+  padding: 11px 13px;
+}
+
+.errorNotice {
+  border-color: #e0aaa6;
+  background: #fff2f1;
+  color: #8f2822;
+}
+
+.successNotice {
+  border-color: #8bd2ae;
+  background: #effaf4;
+  color: #176a43;
+}
+
+.warningNotice {
+  border-color: #e7c47d;
+  background: #fdf2f3;
+  color: #71510d;
+}
+
+.link {
+  color: #a50000;
+  font-weight: 800;
+}
+
+.slotStatus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.retryButton,
+.secondaryButton,
+.dangerButton,
+.primaryButton {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 850;
+  padding: 10px 15px;
+}
+
+.retryButton,
+.secondaryButton {
+  border-color: #cfc0bf;
+  background: #fff;
+  color: #a50000;
+}
+
+.primaryButton {
+  background: #e00000;
+  color: #231815;
+}
+
+.dangerButton {
+  background: #c9473e;
+  color: #fff;
+}
+
+.retryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled,
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.dayTabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 10px;
+  scrollbar-width: thin;
+}
+
+.dayTab {
+  flex: 0 0 auto;
+  min-width: 104px;
+  min-height: 48px;
+  border: 1px solid #ddd0cf;
+  border-radius: 8px;
+  background: #fff;
+  color: #4a3b37;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  padding: 8px 10px;
+}
+
+.dayTabActive {
+  border-color: #a50000;
+  background: #fdf2f3;
+  color: #a50000;
+}
+
+.slotGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.slotButton {
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid #ddd0cf;
+  border-radius: 8px;
+  background: #fff;
+  color: #2f4654;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 6px;
+}
+
+.slotButtonActive {
+  border-color: #b00000;
+  background: #fdecee;
+  color: #75500a;
+  box-shadow: inset 0 0 0 1px #b00000;
+}
+
+.durationRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.durationButton {
+  min-width: 92px;
+  min-height: 42px;
+  border: 1px solid #ddd0cf;
+  border-radius: 8px;
+  background: #fff;
+  color: #4a3b37;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.durationButtonActive {
+  border-color: #a50000;
+  background: #fdf2f3;
+  color: #a50000;
+}
+
+.selectionSummary {
+  margin-top: 13px;
+  border-left: 4px solid #e00000;
+  background: #fdf2f3;
+  color: #604714;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.65;
+  padding: 10px 12px;
+}
+
+.locationValue {
+  border: 1px solid #9fd4b8;
+  border-radius: 8px;
+  background: #effaf4;
+  padding: 12px 13px;
+}
+
+.locationName {
+  display: block;
+  color: #176a43;
+  font-weight: 900;
+}
+
+.locationAddress {
+  display: block;
+  margin-top: 3px;
+  color: #536b60;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.twoColumn {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 14px;
+  border-top: 1px solid #e8dedd;
+  border-bottom: 1px solid #e8dedd;
+  padding: 14px 2px;
+}
+
+.summaryRow {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  color: #4a3b37;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.summaryLabel {
+  color: #8a7a76;
+}
+
+.submit {
+  width: 100%;
+  min-height: 54px;
+  border: 0;
+  border-radius: 8px;
+  background: #e00000;
+  color: #231815;
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.submitHint {
+  margin: 10px 0 0;
+  color: #6b5b57;
+  font-size: 13px;
+  line-height: 1.65;
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.actionLink {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cfc0bf;
+  border-radius: 8px;
+  background: #fff;
+  color: #a50000;
+  font-size: 15px;
+  font-weight: 850;
+  padding: 9px 14px;
+  text-decoration: none;
+}
+
+.actionLinkPrimary {
+  border-color: #a50000;
+  background: #a50000;
+  color: #fff;
+}
+
+.statusPanel {
+  margin-top: 18px;
+  border-top: 5px solid #e00000;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(28, 45, 58, 0.1);
+  padding: 22px 20px;
+}
+
+.statusPanelWarning {
+  border-top-color: #e00000;
+}
+
+.statusPanelDanger {
+  border-top-color: #c9473e;
+}
+
+.statusTitle {
+  margin: 0 0 8px;
+  font-size: 24px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.statusText {
+  margin: 0;
+  color: #574a46;
+  line-height: 1.75;
+}
+
+.countdown {
+  display: inline-block;
+  margin-top: 12px;
+  color: #8a5a00;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.infoList {
+  display: grid;
+  gap: 0;
+  margin: 18px 0;
+  border-top: 1px solid #e8dedd;
+}
+
+.infoRow {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 12px;
+  border-bottom: 1px solid #e3eaee;
+  padding: 12px 0;
+}
+
+.infoLabel {
+  color: #8a7a76;
+  font-size: 14px;
+}
+
+.infoValue {
+  min-width: 0;
+  color: #231815;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.reschedule {
+  margin: 18px 0;
+  border-top: 1px solid #e8dedd;
+  border-bottom: 1px solid #e8dedd;
+  padding: 18px 0;
+}
+
+.srOnly,
+.honeypot {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 16px 14px 36px;
+  }
+
+  .header {
+    padding-bottom: 18px;
+  }
+
+  .progressItem {
+    font-size: 11px;
+  }
+
+  .section {
+    padding: 21px 0;
+  }
+
+  .optionGrid,
+  .optionGridTwo,
+  .twoColumn {
+    grid-template-columns: 1fr;
+  }
+
+  .option {
+    min-height: 64px;
+  }
+
+  .slotGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .actions > *,
+  .actionLink,
+  .primaryButton,
+  .secondaryButton,
+  .dangerButton {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .summaryRow,
+  .infoRow {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 390px) {
+  .progressItem {
+    font-size: 10px;
+  }
+
+  .slotGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .option,
+  .slotButton,
+  .durationButton,
+  .submit {
+    transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+  }
+}

@@ -1,0 +1,19 @@
+node_modules/
+.next/
+out/
+build/
+
+# 🔴 環境變數：裡面有資料庫密碼與 Google 憑證，絕對不要進版控
+.env
+.env.local
+.env*.local
+.env.production
+
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+/prisma/*.db

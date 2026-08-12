@@ -1,0 +1,52 @@
+// 數位名片 + 線上預約系統
+//
+// 只有 `appointment` 這一張需要你自己建（跑 `npx prisma db push` 就好）。
+// 其餘 10 張（設定、通知佇列、追蹤、速率限制、時段鎖、案件編號…）
+// 程式在第一次用到時會自己 CREATE TABLE IF NOT EXISTS，你不用管。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model appointment {
+  id              String    @id @db.VarChar(64)
+  /// 客戶全名
+  name            String    @db.VarChar(80)
+  /// male / female
+  gender          String    @default("") @db.VarChar(8)
+  phone           String    @default("") @db.VarChar(40)
+  /// 雙方都會收到通知信
+  email           String    @default("") @db.VarChar(160)
+  line_id         String?   @db.VarChar(120)
+  /// office 公司面談 / phone 電話 / video 視訊
+  meet_type       String    @default("office") @db.VarChar(16)
+  /// 意圖 JSON array，例：["buy","sell"]
+  intent          String?   @db.LongText
+  /// asap 越快越好 / soon 這個月 / explore 先了解
+  urgency         String?   @db.VarChar(16)
+  note            String?   @db.LongText
+  /// 預約時段（存 UTC）
+  slot_at         DateTime  @db.DateTime(0)
+  /// confirmed / cancelled / completed
+  status          String    @default("confirmed") @db.VarChar(16)
+  /// 以下三個是選配的 AI 判讀欄位，沒接 AI 就一直是空的
+  ai_heat         String?   @db.VarChar(8)
+  ai_film         Boolean   @default(false)
+  ai_suggestion   String?   @db.LongText
+  /// Google Calendar 事件 id（有接日曆才會有值）
+  google_event_id String?   @db.VarChar(128)
+  /// 來源標記，用來分辨客戶從哪個管道來的
+  source          String?   @db.VarChar(32)
+  created_at      DateTime  @default(now()) @db.Timestamp(0)
+  updated_at      DateTime? @db.Timestamp(0)
+  cancelled_at    DateTime? @db.Timestamp(0)
+
+  @@index([slot_at], map: "appointment_slot_idx")
+  @@index([status, slot_at], map: "appointment_status_slot_idx")
+  @@index([created_at], map: "appointment_created_idx")
+}
