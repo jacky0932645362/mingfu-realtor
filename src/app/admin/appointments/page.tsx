@@ -1,4 +1,5 @@
-import { isCurrentUserAdmin } from "@/lib/admin-check";
+import { redirect } from "next/navigation";
+import { getAdminCheckArgs, isCurrentUserAdmin } from "@/lib/admin-check";
 import {
   intentEmoji,
   intentLabel,
@@ -299,6 +300,10 @@ export default async function AppointmentsAdminPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  // 還沒登入 → 帶去登入頁（原本是直接 throw，畫面會變成 500 錯誤頁，看不出要登入）
+  const { email } = await getAdminCheckArgs();
+  if (!email) redirect("/api/auth/signin?callbackUrl=%2Fadmin%2Fappointments");
+  // 登入了但不在白名單 → 這才是真的沒權限
   if (!(await isCurrentUserAdmin())) throw new Error("權限不足");
 
   const sp = await searchParams;
