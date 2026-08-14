@@ -21,6 +21,7 @@ import {
   type OpenDay,
 } from "@/lib/appointment-constants";
 import { SOCIAL } from "../_links";
+import TurnstileWidget, { TURNSTILE_SITE_KEY } from "./TurnstileWidget";
 import styles from "./Booking.module.css";
 import {
   TRACKING_CONSENT_CHANGED_EVENT,
@@ -254,6 +255,9 @@ export default function BookingForm() {
   const [qualification, setQualification] = useState<Qualification>({});
   const [note, setNote] = useState("");
   const [website, setWebsite] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
+  const [turnstileDown, setTurnstileDown] = useState(false);
 
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState("");
@@ -285,6 +289,21 @@ export default function BookingForm() {
       return next;
     });
     setSubmitError("");
+  }, []);
+
+  const handleTurnstileToken = useCallback(
+    (token: string) => {
+      setTurnstileToken(token);
+      if (token) {
+        setTurnstileDown(false);
+        clearError("turnstile");
+      }
+    },
+    [clearError],
+  );
+
+  const handleTurnstileUnavailable = useCallback(() => {
+    setTurnstileDown(true);
   }, []);
 
   const track = useCallback(
@@ -587,6 +606,13 @@ export default function BookingForm() {
         next[`qualification.${field.key}`] = `請填寫${field.label}。`;
       }
     }
+    // 沒設 site key 就不擋（等同 Turnstile 未啟用），設了就一定要有 token，
+    // 否則後端會回 400，客人只會看到「送出失敗」不知道要做什麼。
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      next.turnstile = turnstileDown
+        ? "人機驗證服務暫時連不上，請重新整理頁面再試一次。"
+        : "請先完成下方的人機驗證。";
+    }
     return next;
   };
 
@@ -642,6 +668,7 @@ export default function BookingForm() {
           qualification: qualificationPayload,
           note: note.trim(),
           website,
+          turnstileToken,
           funnelSessionId: trackingEnabled ? sessionId : "",
           idempotencyKey: key,
           tracking: {
@@ -665,6 +692,8 @@ export default function BookingForm() {
       });
       const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
       if (!response.ok || data.ok !== true) {
+        // Turnstile 的 token 只能用一次，這次送失敗就得換一顆，否則重送必定被拒
+        setTurnstileResetSignal((value) => value + 1);
         const message = String(data.error || "送出失敗，請稍後再試。");
         const code = String(data.code || "");
         const staleSlotCodes = new Set([
@@ -707,6 +736,7 @@ export default function BookingForm() {
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
+      setTurnstileResetSignal((value) => value + 1);
       setSubmitError("網路連線中斷，資料尚未確認送出。請重試；系統會用同一組識別碼避免重複預約。");
       track("submit_error", "network");
     } finally {
@@ -1162,6 +1192,16 @@ export default function BookingForm() {
                   <strong>{selectedSlot?.dayLabel || activeDay?.label || ""} {formatTimeRange(selectedStart, duration)}（{durationLabel(duration)}）</strong>
                 </div>
               </div>
+
+              <TurnstileWidget
+                onToken={handleTurnstileToken}
+                onUnavailable={handleTurnstileUnavailable}
+                resetSignal={turnstileResetSignal}
+                containerRef={registerRef("turnstile")}
+              />
+              {errors.turnstile ? (
+                <div className={styles.errorNotice} role="alert">{errors.turnstile}</div>
+              ) : null}
 
               {submitError ? <div className={styles.errorNotice} role="alert">{submitError}</div> : null}
               <button className={styles.submit} type="submit" disabled={submitting}>
