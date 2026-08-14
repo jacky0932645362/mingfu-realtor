@@ -9,6 +9,7 @@ import { OWNER, SOCIAL as OWNER_SOCIAL, LINE_QR as OWNER_LINE_QR } from "@/confi
 export const ABIN = {
   name: OWNER.name,
   alias: OWNER.alias,
+  brandPersona: OWNER.brandPersona,
   title: OWNER.title,
   phone: OWNER.phone,
   phoneRaw: OWNER.phoneRaw,

@@ -15,13 +15,13 @@ const BRAND = ABIN.company || ABIN.name;
 const OG_IMAGE = `${SITE_URL}${ABIN.photoUrl}`;
 
 export const metadata: Metadata = {
-  title: `${ABIN.name}（${ABIN.alias}）‧ ${ABIN.title} | 預約諮詢`,
-  description: `${ABIN.slogan} 線上預約${ABIN.alias}:買房 / 賣房 / 租賃 / 法律諮詢,一對一為你服務。`,
+  title: `${ABIN.name}（${ABIN.brandPersona}）‧ ${ABIN.title} | 預約諮詢`,
+  description: `${ABIN.slogan} 線上預約${ABIN.brandPersona}:買房 / 賣房 / 租賃 / 法律諮詢,一對一為你服務。`,
   robots: { index: false, follow: false },
   // OG 鐵律:名片要本人高光照,不可 fallback 其他促銷圖
   openGraph: {
-    title: `${ABIN.name}（${ABIN.alias}）‧ ${ABIN.title}`,
-    description: `${ABIN.slogan} 線上預約${ABIN.alias}、加 LINE 諮詢買賣租賃。`,
+    title: `${ABIN.name}（${ABIN.brandPersona}）‧ ${ABIN.title}`,
+    description: `${ABIN.slogan} 線上預約${ABIN.brandPersona}、加 LINE 諮詢買賣租賃。`,
     url: SITE_URL,
     siteName: BRAND,
     type: "profile",
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: `${ABIN.name}（${ABIN.alias}）‧ ${ABIN.title}`,
+    title: `${ABIN.name}（${ABIN.brandPersona}）‧ ${ABIN.title}`,
     description: `${ABIN.slogan}`,
     images: [OG_IMAGE],
   },
@@ -119,7 +119,9 @@ export default function CardPage() {
           <div style={{ textAlign: "center", padding: "14px 26px 6px" }}>
             <div style={{ fontSize: 25, fontWeight: 800, letterSpacing: 0.5 }}>
               {ABIN.name}
-              <span style={{ color: RCIS.muted, fontSize: 17, fontWeight: 500, marginLeft: 10 }}>{ABIN.alias}</span>
+              {/* 封面顯示品牌人設「房仲蕭邦」，不是慣用稱呼「茗馥」——
+                  門面掛品牌，一對一溝通的文案才用本名（見 config/owner.ts 註解）。 */}
+              <span style={{ color: RCIS.muted, fontSize: 17, fontWeight: 500, marginLeft: 10 }}>{ABIN.brandPersona}</span>
             </div>
             <div style={{ fontSize: 15, color: RCIS.inkSoft, marginTop: 6, fontWeight: 500 }}>{ABIN.title}</div>
             <div style={{ fontSize: 14, color: RCIS.muted, marginTop: 12, lineHeight: 1.7 }}>{ABIN.slogan}</div>
