@@ -126,7 +126,7 @@ export const metadata: Metadata = {
     url: SITE_URL,
     siteName: BRAND,
     locale: "zh_TW",
-    images: [{ url: OG_IMAGE, width: 960, height: 1200, alt: `${OWNER.name} 形象照` }],
+    images: [{ url: OG_IMAGE, width: 1200, height: 1500, alt: `${OWNER.name} 形象照` }],
   },
   twitter: {
     card: "summary_large_image",
@@ -248,8 +248,8 @@ export default function HomePage() {
             <img
               src="/profile.jpg"
               alt={`${OWNER.name}－台中海線房仲（沙鹿、龍井、清水、梧棲）個人形象照`}
-              width={960}
-              height={1200}
+              width={1200}
+              height={1500}
               fetchPriority="high"
             />
             <span className={styles.heroBadge}>

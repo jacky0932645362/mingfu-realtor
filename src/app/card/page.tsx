@@ -121,7 +121,7 @@ export default function CardPage() {
               {ABIN.name}
               {/* 封面顯示品牌人設「房仲蕭邦」，不是慣用稱呼「茗馥」——
                   門面掛品牌，一對一溝通的文案才用本名（見 config/owner.ts 註解）。 */}
-              <span style={{ color: RCIS.muted, fontSize: 17, fontWeight: 500, marginLeft: 10 }}>{ABIN.brandPersona}</span>
+              <span style={{ color: RCIS.muted, fontSize: 17, fontWeight: 500, marginLeft: 10 }}>({ABIN.brandPersona})</span>
             </div>
             <div style={{ fontSize: 15, color: RCIS.inkSoft, marginTop: 6, fontWeight: 500 }}>{ABIN.title}</div>
             <div style={{ fontSize: 14, color: RCIS.muted, marginTop: 12, lineHeight: 1.7 }}>{ABIN.slogan}</div>
