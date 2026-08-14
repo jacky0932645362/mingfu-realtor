@@ -1,3 +1,6 @@
+/* 配色：太平洋房屋 CIS（主紅 #E00000 / 深棕 #231815 / 粉 #EE828A），與官網首頁一致。
+   ⚠️ 紅底一律配白字（5.04:1）；配深棕字只有 3.33:1，不合格。
+   備用色票（Foresight 深藍/橘/金）見 src/app/card/_cis.ts 檔頭。 */
 .page {
   min-height: 100vh;
   background: #f4f8fa;
@@ -32,7 +35,7 @@
 
 .lead {
   margin: 0;
-  color: #574a46;
+  color: #4a3b37;
   font-size: 15px;
   line-height: 1.75;
 }
@@ -65,7 +68,7 @@
 }
 
 .progressItemActive .progressBar {
-  background: #e00000;
+  background: #a50000;
 }
 
 .form {
@@ -107,7 +110,7 @@
 
 .sectionHint {
   margin: 0;
-  color: #6b5b57;
+  color: #8a7a76;
   font-size: 13px;
   line-height: 1.55;
 }
@@ -125,7 +128,7 @@
 .option {
   min-height: 74px;
   padding: 12px 13px;
-  border: 1.5px solid #ddd0cf;
+  border: 1.5px solid #e8dedd;
   border-radius: 8px;
   background: #fff;
   color: #263b49;
@@ -233,7 +236,7 @@
 .successNotice,
 .warningNotice {
   margin: 12px 0 0;
-  border: 1px solid #ddd0cf;
+  border: 1px solid #e8dedd;
   border-radius: 8px;
   background: #fff;
   color: #4a3b37;
@@ -289,14 +292,14 @@
 
 .retryButton,
 .secondaryButton {
-  border-color: #cfc0bf;
+  border-color: #e8dedd;
   background: #fff;
   color: #a50000;
 }
 
 .primaryButton {
   background: #e00000;
-  color: #231815;
+  color: #ffffff;
 }
 
 .dangerButton {
@@ -324,7 +327,7 @@
   flex: 0 0 auto;
   min-width: 104px;
   min-height: 48px;
-  border: 1px solid #ddd0cf;
+  border: 1px solid #e8dedd;
   border-radius: 8px;
   background: #fff;
   color: #4a3b37;
@@ -350,7 +353,7 @@
 .slotButton {
   min-width: 0;
   min-height: 44px;
-  border: 1px solid #ddd0cf;
+  border: 1px solid #e8dedd;
   border-radius: 8px;
   background: #fff;
   color: #2f4654;
@@ -378,7 +381,7 @@
 .durationButton {
   min-width: 92px;
   min-height: 42px;
-  border: 1px solid #ddd0cf;
+  border: 1px solid #e8dedd;
   border-radius: 8px;
   background: #fff;
   color: #4a3b37;
@@ -455,13 +458,25 @@
   color: #8a7a76;
 }
 
+.turnstile {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 14px;
+  min-height: 65px;
+}
+
+.turnstile:empty {
+  margin: 0;
+  min-height: 0;
+}
+
 .submit {
   width: 100%;
   min-height: 54px;
   border: 0;
   border-radius: 8px;
   background: #e00000;
-  color: #231815;
+  color: #ffffff;
   cursor: pointer;
   font: inherit;
   font-size: 18px;
@@ -475,7 +490,7 @@
 
 .submitHint {
   margin: 10px 0 0;
-  color: #6b5b57;
+  color: #8a7a76;
   font-size: 13px;
   line-height: 1.65;
   text-align: center;
@@ -493,7 +508,7 @@
   min-height: 44px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #cfc0bf;
+  border: 1px solid #e8dedd;
   border-radius: 8px;
   background: #fff;
   color: #a50000;
@@ -511,7 +526,7 @@
 
 .statusPanel {
   margin-top: 18px;
-  border-top: 5px solid #e00000;
+  border-top: 5px solid #a50000;
   background: #fff;
   box-shadow: 0 8px 28px rgba(28, 45, 58, 0.1);
   padding: 22px 20px;
@@ -534,7 +549,7 @@
 
 .statusText {
   margin: 0;
-  color: #574a46;
+  color: #4a3b37;
   line-height: 1.75;
 }
 

@@ -1,11 +1,21 @@
 /**
- * 太平洋房屋 CIS — 前台亮色版（/card 名片頁 / 預約表單 / 成功頁，給客戶看）
+ * 前台亮色版 CIS（/card 名片頁 / 預約表單 / 成功頁，給客戶看）
  *
- * 2026-08-12：從原本的「天藍 + 橘」改成太平洋房屋品牌色，與個人官網同一套視覺：
- *   主紅 #E00000 / 深棕 #231815 / 亮粉 #EE828A / 淺粉 #F5C0C4 / 白 #FFFFFF
+ * 配色：太平洋房屋 CIS —— 主紅 #E00000 / 深棕 #231815 / 亮粉 #EE828A / 淺粉 #F5C0C4 / 白
+ * 與官網首頁同一套視覺（首頁的色票在 src/app/home.module.css 檔頭）。
  *
- * ⚠️ key 的名字（sky / orange…）沿用原本的寫法，因為 Booking.module.css 與多個元件
+ * ⚠️ key 的名字（sky / orange / pink…）沿用原本的寫法，因為 Booking.module.css 與多個元件
  *    都靠這些名字取色，改名要動很多檔案。這裡的「語意」以註解為準，不要照字面理解顏色。
+ *
+ * ⚠️ 無障礙：紅 #E00000 底配白字是 5.04:1（過 AA）；配深棕字只有 3.33:1（不合格）。
+ *    所以 ctaText 是白色，不要改成深色。
+ *    亮粉 #EE828A 在白底上當文字只有 2.56:1，只能當裝飾或深色底上的字。
+ *
+ * 備用色票 Foresight（遠見房屋）深藍/橘/金，要換過去的話：
+ *   sky #003C7D / skyDeep #002A58 / skySoft #EDF3FA
+ *   orange #F28A00 / orangeDeep #D97B00 / orangeSoft #FFF4E5
+ *   pink #D8A246 / ink #16283F / muted #5A6B80 / border #DCE3EC
+ *   ⚠️ 那組的 ctaText 必須改成 #16283F（橘底配白字只有 2.5:1，不合格）。
  */
 export const RCIS = {
   sky: "#E00000", // 品牌主紅（原 sky，主色）
