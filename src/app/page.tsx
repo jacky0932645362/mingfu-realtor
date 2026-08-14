@@ -88,7 +88,7 @@ const AREA_TEXT = AREAS.map((a) => a.name).join("、");
 const SERVICE_TEXT = SERVICES.map((s) => s.title).join("、");
 
 const DESCRIPTION =
-  `${OWNER.name}｜${BRAND}。專營台中海線（${AREA_TEXT}）房屋與土地買賣，` +
+  `${OWNER.name}（${OWNER.brandPersona}）｜${BRAND}。專營台中海線（${AREA_TEXT}）房屋與土地買賣，` +
   `110、111、112年連續三年榮獲年度TOP1。提供${SERVICE_TEXT}等服務，` +
   `可線上預約諮詢或加LINE（${OWNER.phoneRaw}）直接聊。`;
 
@@ -151,6 +151,9 @@ const JSON_LD = {
       "@type": "RealEstateAgent",
       "@id": AGENT_ID,
       name: `${OWNER.name}｜${BRAND}`,
+      // 讓 Google 知道「蕭茗馥」和「房仲蕭邦」是同一個人，
+      // 客戶搜個人品牌名也找得到官網。
+      alternateName: OWNER.brandPersona,
       description: DESCRIPTION,
       image: OG_IMAGE,
       url: SITE_URL,
@@ -188,6 +191,7 @@ const JSON_LD = {
       employee: {
         "@type": "Person",
         name: OWNER.name,
+        alternateName: OWNER.brandPersona,
         jobTitle: OWNER.title,
         image: OG_IMAGE,
         telephone: `+886-${OWNER.phoneRaw.slice(1)}`,
@@ -255,7 +259,12 @@ export default function HomePage() {
 
           <div>
             <p className={styles.heroEyebrow}>{BRAND}</p>
-            <h1 className={styles.heroName}>{OWNER.name}</h1>
+            {/* 姓名後面掛品牌人設「房仲蕭邦」——本人在經營的個人品牌，
+                要讓客戶把「蕭茗馥」和「房仲蕭邦」連在一起記。 */}
+            <h1 className={styles.heroName}>
+              {OWNER.name}
+              <span className={styles.heroPersona}>({OWNER.brandPersona})</span>
+            </h1>
             <p className={styles.heroTitle}>{OWNER.title}</p>
             <p className={styles.heroTagline}>
               專營台中海線・沙鹿・龍井・清水・梧棲<br />

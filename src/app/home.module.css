@@ -227,6 +227,16 @@
   letter-spacing: .04em;
   color: var(--brand-primary);
 }
+/* 姓名後面的品牌人設「(房仲蕭邦)」——用深棕字跟紅色本名區隔，
+   字級壓到約一半，才不會跟本名搶主角。em 是跟著 .heroName 的字級縮放的。 */
+.heroPersona {
+  color: var(--brand-ink);
+  font-size: .48em;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin-left: .28em;
+  white-space: nowrap;
+}
 .heroTitle {
   font-size: 1rem;
   font-weight: 600;
