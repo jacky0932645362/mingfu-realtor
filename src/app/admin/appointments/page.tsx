@@ -374,6 +374,46 @@ export default async function AppointmentsAdminPage({
               先處理逾時與異常，再追蹤到場、結果及實際成交。
             </p>
           </div>
+          <a
+            href="/admin/customers"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              minHeight: 40,
+              padding: "8px 14px",
+              borderRadius: 7,
+              background: "rgba(255,255,255,0.05)",
+              border: `1px solid ${CIS.cardBorder}`,
+              color: CIS.textSub,
+              fontSize: 15,
+              fontWeight: 800,
+              textDecoration: "none",
+            }}
+          >
+            <Icon name="users" size={15} />
+            買方客戶
+          </a>
+          <a
+            href="/admin/calendar"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              minHeight: 40,
+              padding: "8px 14px",
+              borderRadius: 7,
+              background: "rgba(255,255,255,0.05)",
+              border: `1px solid ${CIS.cardBorder}`,
+              color: CIS.textSub,
+              fontSize: 15,
+              fontWeight: 800,
+              textDecoration: "none",
+            }}
+          >
+            <Icon name="calendar" size={15} />
+            行事曆
+          </a>
           <div style={{ color: googleBound ? "#4ade80" : "#fbbf24", fontSize: 15, fontWeight: 800 }}>
             <StatusDot tone={googleBound ? "green" : "yellow"} title={googleBound ? "已綁定" : "未綁定"} />
             {" "}

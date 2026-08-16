@@ -1,0 +1,220 @@
+/*
+ * 買方客戶資料庫樣式 — 沿用 appointments.module.css 的字級／間距慣例
+ * （2026-08-06 系統擁有者拍板：後台字要夠大，這裡比照辦理）。
+ */
+.page {
+  min-height: 100vh;
+  padding: 24px 18px 56px;
+}
+
+.shell {
+  width: min(1100px, 100%);
+  margin: 0 auto;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.25;
+}
+
+.subtitle {
+  margin: 5px 0 0;
+  font-size: 15px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 16px 0 12px;
+}
+
+.searchWrap {
+  position: relative;
+  flex: 1 1 280px;
+}
+
+.searchWrap svg {
+  position: absolute;
+  top: 15px;
+  left: 12px;
+}
+
+.searchInput,
+.select {
+  min-height: 46px;
+  border-radius: 7px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 15px;
+}
+
+.searchInput {
+  width: 100%;
+  padding-left: 37px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  border-radius: 7px;
+  padding: 9px 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.queueTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 18px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.list {
+  display: grid;
+  gap: 13px;
+}
+
+.card {
+  display: block;
+  padding: 17px 18px;
+  border: 1px solid;
+  border-radius: 10px;
+  text-decoration: none;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.identity {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 40px 20px;
+  border: 1px dashed;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 15px;
+}
+
+/* ---- 表單（新增／編輯共用） ---- */
+.formSection {
+  border: 1px solid;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 900;
+  margin: 0 0 12px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 14px;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+@media (max-width: 520px) {
+  .titleRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .headerActions {
+    width: 100%;
+  }
+  .headerActions a {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}

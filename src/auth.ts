@@ -87,5 +87,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-  pages: { signIn: "/api/auth/signin" },
+  // 🔴 不要手動設 pages.signIn 指向 "/api/auth/signin"：那本來就是 NextAuth 內建登入頁的預設路徑，
+  //    明講成同一個路徑會讓它一直「重導向到自訂登入頁」但自訂頁就是自己，變成無限重導向
+  //    （2026-08-16 實測 ERR_TOO_MANY_REDIRECTS，/admin/appointments 也中；拿掉這行就恢復正常）。
 });
