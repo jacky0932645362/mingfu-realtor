@@ -1,6 +1,10 @@
 /*
  * 買方客戶資料庫樣式 — 沿用 appointments.module.css 的字級／間距慣例
  * （2026-08-06 系統擁有者拍板：後台字要夠大，這裡比照辦理）。
+ *
+ * ⚠️ 2026-08-17 起這個檔案也被 /admin/tenants（租客）與 /admin/calendar 共用
+ * （class 名都是通用的 page/shell/card/formGrid…，不是 customer 專屬）。
+ * 改這裡的樣式會同時影響買方／租客／行事曆三個後台頁面，不是只有這頁。
  */
 .page {
   min-height: 100vh;

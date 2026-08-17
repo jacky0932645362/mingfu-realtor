@@ -3,7 +3,9 @@ import Link from "next/link";
 import { getAdminCheckArgs, isCurrentUserAdmin } from "@/lib/admin-check";
 import { listUpcomingFollowUps } from "@/lib/customer";
 import { listUpcomingShowings } from "@/lib/showing";
-import { CIS } from "@/app/admin/_components/cis";
+import { listUpcomingTenantFollowUps } from "@/lib/tenant";
+import { listUpcomingTenantShowings } from "@/lib/tenant-showing";
+import { CIS, CHIP } from "@/app/admin/_components/cis";
 import { Icon } from "@/app/admin/_ui/icons";
 import styles from "../customers/customers.module.css";
 
@@ -15,6 +17,7 @@ type AgendaEvent = {
   at: Date;
   dateKey: string;
   kind: "showing" | "followup";
+  pipeline: "buyer" | "tenant";
   title: string;
   subtitle: string;
   href: string;
@@ -49,9 +52,11 @@ export default async function CalendarPage() {
   if (!email) redirect("/api/auth/signin?callbackUrl=%2Fadmin%2Fcalendar");
   if (!(await isCurrentUserAdmin())) throw new Error("權限不足");
 
-  const [showings, followUps] = await Promise.all([
+  const [showings, followUps, tenantShowings, tenantFollowUps] = await Promise.all([
     listUpcomingShowings(AGENDA_DAYS),
     listUpcomingFollowUps(AGENDA_DAYS),
+    listUpcomingTenantShowings(AGENDA_DAYS),
+    listUpcomingTenantFollowUps(AGENDA_DAYS),
   ]);
 
   const now = new Date();
@@ -63,6 +68,7 @@ export default async function CalendarPage() {
       at: new Date(s.visited_at),
       dateKey: taipeiDateKey(new Date(s.visited_at)),
       kind: "showing",
+      pipeline: "buyer",
       title: `${formatTimeTw(new Date(s.visited_at))}　${s.customer_name}｜${s.property_name}`,
       subtitle: s.customer_phone,
       href: `/admin/customers/${s.customer_id}`,
@@ -72,10 +78,31 @@ export default async function CalendarPage() {
       at: new Date(c.next_follow_up_at as Date),
       dateKey: taipeiDateKey(new Date(c.next_follow_up_at as Date)),
       kind: "followup",
+      pipeline: "buyer",
       title: `${formatTimeTw(new Date(c.next_follow_up_at as Date))}　追蹤 ${c.name}`,
       subtitle: c.next_step || c.phone,
       href: `/admin/customers/${c.id}`,
       overdue: new Date(c.next_follow_up_at as Date) < now,
+    })),
+    ...tenantShowings.map((s): AgendaEvent => ({
+      at: new Date(s.visited_at),
+      dateKey: taipeiDateKey(new Date(s.visited_at)),
+      kind: "showing",
+      pipeline: "tenant",
+      title: `${formatTimeTw(new Date(s.visited_at))}　${s.tenant_name}｜${s.property_name}`,
+      subtitle: s.tenant_phone,
+      href: `/admin/tenants/${s.tenant_id}`,
+      overdue: false,
+    })),
+    ...tenantFollowUps.map((t): AgendaEvent => ({
+      at: new Date(t.next_follow_up_at as Date),
+      dateKey: taipeiDateKey(new Date(t.next_follow_up_at as Date)),
+      kind: "followup",
+      pipeline: "tenant",
+      title: `${formatTimeTw(new Date(t.next_follow_up_at as Date))}　追蹤 ${t.name}`,
+      subtitle: t.next_step || t.phone,
+      href: `/admin/tenants/${t.id}`,
+      overdue: new Date(t.next_follow_up_at as Date) < now,
     })),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
 
@@ -106,6 +133,13 @@ export default async function CalendarPage() {
               style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
             >
               買方客戶
+            </Link>
+            <Link
+              href="/admin/tenants"
+              className={styles.button}
+              style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
+            >
+              租客客戶
             </Link>
             <Link
               href="/admin/appointments"
@@ -150,9 +184,21 @@ export default async function CalendarPage() {
                           padding: "13px 16px",
                         }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <Icon name={ev.kind === "showing" ? "home" : "chat"} size={16} color={ev.kind === "showing" ? CIS.blueSoft : "#fbbf24"} />
-                          <span style={{ fontSize: 16, fontWeight: 800 }}>{ev.title}</span>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <Icon name={ev.kind === "showing" ? "home" : "chat"} size={16} color={ev.kind === "showing" ? CIS.blueSoft : "#fbbf24"} />
+                            <span style={{ fontSize: 16, fontWeight: 800 }}>{ev.title}</span>
+                          </div>
+                          <span
+                            className={styles.chip}
+                            style={{
+                              background: CHIP[ev.pipeline === "tenant" ? "warn" : "info"].bg,
+                              color: CHIP[ev.pipeline === "tenant" ? "warn" : "info"].color,
+                              borderColor: CHIP[ev.pipeline === "tenant" ? "warn" : "info"].border,
+                            }}
+                          >
+                            {ev.pipeline === "tenant" ? "租客" : "買方"}
+                          </span>
                         </div>
                         <div style={{ color: CIS.textMute, fontSize: 14, marginTop: 4, marginLeft: 24 }}>{ev.subtitle}</div>
                       </Link>
