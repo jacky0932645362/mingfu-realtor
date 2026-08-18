@@ -5,7 +5,8 @@ import { listUpcomingFollowUps } from "@/lib/customer";
 import { listUpcomingShowings } from "@/lib/showing";
 import { listUpcomingTenantFollowUps } from "@/lib/tenant";
 import { listUpcomingTenantShowings } from "@/lib/tenant-showing";
-import { CIS, CHIP } from "@/app/admin/_components/cis";
+import { listUpcomingSellerReportDue } from "@/lib/seller";
+import { CIS, CHIP, type ChipTone } from "@/app/admin/_components/cis";
 import { Icon } from "@/app/admin/_ui/icons";
 import styles from "../customers/customers.module.css";
 
@@ -17,11 +18,23 @@ type AgendaEvent = {
   at: Date;
   dateKey: string;
   kind: "showing" | "followup";
-  pipeline: "buyer" | "tenant";
+  pipeline: "buyer" | "tenant" | "seller";
   title: string;
   subtitle: string;
   href: string;
   overdue: boolean;
+};
+
+const PIPELINE_LABEL: Record<AgendaEvent["pipeline"], string> = {
+  buyer: "買方",
+  tenant: "租客",
+  seller: "屋主",
+};
+
+const PIPELINE_TONE: Record<AgendaEvent["pipeline"], ChipTone> = {
+  buyer: "info",
+  tenant: "warn",
+  seller: "success",
 };
 
 function taipeiDateKey(date: Date): string {
@@ -52,11 +65,12 @@ export default async function CalendarPage() {
   if (!email) redirect("/api/auth/signin?callbackUrl=%2Fadmin%2Fcalendar");
   if (!(await isCurrentUserAdmin())) throw new Error("權限不足");
 
-  const [showings, followUps, tenantShowings, tenantFollowUps] = await Promise.all([
+  const [showings, followUps, tenantShowings, tenantFollowUps, sellerReportsDue] = await Promise.all([
     listUpcomingShowings(AGENDA_DAYS),
     listUpcomingFollowUps(AGENDA_DAYS),
     listUpcomingTenantShowings(AGENDA_DAYS),
     listUpcomingTenantFollowUps(AGENDA_DAYS),
+    listUpcomingSellerReportDue(AGENDA_DAYS),
   ]);
 
   const now = new Date();
@@ -104,6 +118,16 @@ export default async function CalendarPage() {
       href: `/admin/tenants/${t.id}`,
       overdue: new Date(t.next_follow_up_at as Date) < now,
     })),
+    ...sellerReportsDue.map((s): AgendaEvent => ({
+      at: new Date(s.next_report_at as Date),
+      dateKey: taipeiDateKey(new Date(s.next_report_at as Date)),
+      kind: "followup",
+      pipeline: "seller",
+      title: `${formatTimeTw(new Date(s.next_report_at as Date))}　回報 ${s.name}`,
+      subtitle: s.next_step || s.phone,
+      href: `/admin/sellers/${s.id}`,
+      overdue: new Date(s.next_report_at as Date) < now,
+    })),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
 
   const groups = new Map<string, AgendaEvent[]>();
@@ -140,6 +164,13 @@ export default async function CalendarPage() {
               style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
             >
               租客客戶
+            </Link>
+            <Link
+              href="/admin/sellers"
+              className={styles.button}
+              style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
+            >
+              屋主客戶
             </Link>
             <Link
               href="/admin/appointments"
@@ -192,12 +223,12 @@ export default async function CalendarPage() {
                           <span
                             className={styles.chip}
                             style={{
-                              background: CHIP[ev.pipeline === "tenant" ? "warn" : "info"].bg,
-                              color: CHIP[ev.pipeline === "tenant" ? "warn" : "info"].color,
-                              borderColor: CHIP[ev.pipeline === "tenant" ? "warn" : "info"].border,
+                              background: CHIP[PIPELINE_TONE[ev.pipeline]].bg,
+                              color: CHIP[PIPELINE_TONE[ev.pipeline]].color,
+                              borderColor: CHIP[PIPELINE_TONE[ev.pipeline]].border,
                             }}
                           >
-                            {ev.pipeline === "tenant" ? "租客" : "買方"}
+                            {PIPELINE_LABEL[ev.pipeline]}
                           </span>
                         </div>
                         <div style={{ color: CIS.textMute, fontSize: 14, marginTop: 4, marginLeft: 24 }}>{ev.subtitle}</div>

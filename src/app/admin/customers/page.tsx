@@ -108,6 +108,14 @@ export default async function CustomersPage({
               租客客戶
             </Link>
             <Link
+              href="/admin/sellers"
+              className={styles.button}
+              style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
+            >
+              <Icon name="home" size={15} />
+              屋主客戶
+            </Link>
+            <Link
               href="/admin/calendar"
               className={styles.button}
               style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
