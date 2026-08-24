@@ -58,7 +58,19 @@
 .cardTitle { margin: 0 0 10px; font-size: 1.18rem; font-weight: 800; }
 .cardDesc { margin: 0 0 16px; font-size: .93rem; line-height: 1.85; color: var(--muted); flex: 1; }
 .cardList { margin: 0 0 18px; padding-left: 18px; font-size: .88rem; line-height: 1.9; color: var(--muted); }
-.cardGo { font-size: .9rem; font-weight: 800; color: var(--brand-primary); }
+/* 外部查詢系統的主辦單位標示——不能讓人以為地籍圖資是本人做的 */
+.cardOrg {
+  display: inline-block;
+  margin: 0 0 14px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 700;
+}
+.cardGo { margin-top: auto; font-size: .9rem; font-weight: 800; color: var(--brand-primary); }
 .cardGo::after { content: " →"; }
 
 /* 還沒做好的工具：看得到但點不下去，避免點了 404。 */

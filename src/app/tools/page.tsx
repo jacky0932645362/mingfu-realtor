@@ -10,6 +10,11 @@
  *
  * ⚠️ 靜態檔是由 Agent-OS/tools/land-tax-calculator.html 包裝產生的，
  *    要改內容改原檔再重新產生，不要直接改 public/ 裡那份。
+ *
+ * 2026-08-24 分成兩類：CALCULATORS（自己架的試算工具）與
+ * EXTERNAL_TOOLS（連到政府官方網站的查詢系統，例如地籍圖資）。
+ * 不要混在同一組陣列裡——外部連結一定要新分頁開、要清楚標主辦單位，
+ * 不能讓人誤會地籍圖資是本人做的。
  */
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -21,22 +26,24 @@ import styles from "./tools.module.css";
 const BRAND = OWNER.company || OWNER.name;
 
 const DESCRIPTION =
-  "免費房產試算工具：房地合一稅試算（算稅金與實拿、反推該開多少價、看再撐幾天稅率會降）。" +
+  "免費房產工具：房地合一稅試算（算稅金與實拿、反推該開多少價），" +
+  "以及內政部地籍圖資、實價登錄等官方查詢系統連結。" +
   `由${OWNER.name}（${OWNER.brandPersona}）整理，台中海線房產顧問。`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: `房產工具｜房地合一稅試算｜${OWNER.name}`,
+  title: `房產工具｜房地合一稅試算・地籍圖資查詢｜${OWNER.name}`,
   description: DESCRIPTION,
   keywords: [
     "房地合一稅試算", "房地合一稅計算", "房地合一稅2.0", "賣房要繳多少稅",
     "房屋稅務試算", "自住400萬免稅額", "重購退稅", "持有期間稅率",
+    "地籍圖資查詢", "地籍圖資網路便民服務系統", "地號查詢", "土地使用分區查詢",
     "台中海線房產顧問", OWNER.name, "房仲蕭邦",
   ],
   alternates: { canonical: `${SITE_URL}/tools` },
   openGraph: {
     type: "website",
-    title: `房產工具｜房地合一稅試算｜${OWNER.name}`,
+    title: `房產工具｜房地合一稅試算・地籍圖資查詢｜${OWNER.name}`,
     description: DESCRIPTION,
     url: `${SITE_URL}/tools`,
     siteName: BRAND,
@@ -45,11 +52,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * 工具清單。
+ * 自製試算工具。
  * `href` 為 null＝還沒做好，卡片會變成不可點的「準備中」樣式 ——
  * 列出來讓人知道之後會有，但不要給一個點下去 404 的連結。
  */
-const TOOLS = [
+const CALCULATORS = [
   {
     tag: "稅務",
     title: "房地合一稅試算",
@@ -77,6 +84,24 @@ const TOOLS = [
   },
 ] as const;
 
+/**
+ * 外部政府查詢系統。這些不是本人架的，是連到官方網站 ——
+ * 跟上面的自製工具分開放，卡片上要清楚標「內政部」而不是讓人誤會是自己做的，
+ * 連結一律開新分頁（離開官網去外部網站，不能佔用原本這個分頁）。
+ *
+ * ⚠️ 每個網址上線前都要先用 WebFetch 驗證過是官方現行網址（政府網站偶爾會換網域），
+ *    不能用記憶裡的網址直接放，寫錯政府單位的網址比沒有連結還糟。
+ */
+const EXTERNAL_TOOLS = [
+  {
+    tag: "地政",
+    title: "地籍圖資網路便民服務系統",
+    href: "https://easymap.moi.gov.tw/Z10Web/Index",
+    org: "內政部地政司",
+    desc: "用地號、門牌或村里查地籍圖，看地段範圍、面積、使用分區，議價或確認範圍時很好用。",
+  },
+] as const;
+
 export default function ToolsPage() {
   return (
     <main className={home.page}>
@@ -85,9 +110,9 @@ export default function ToolsPage() {
       <section className={styles.hero}>
         <div className={styles.heroInner}>
           <p className={styles.heroEyebrow}>TOOLS</p>
-          <h1 className={styles.heroTitle}>房產試算工具</h1>
+          <h1 className={styles.heroTitle}>房產工具</h1>
           <p className={styles.heroSub}>
-            買房賣房會用到的計算，先自己算一遍再談，心裡比較有底。
+            買房賣房會用到的計算與查詢，先自己看一遍再談，心裡比較有底。
             <br />
             免費使用，不用留資料。
           </p>
@@ -96,12 +121,12 @@ export default function ToolsPage() {
 
       <section className={home.section} aria-labelledby="tools-title">
         <div className={home.sectionInner}>
-          <p className={home.eyebrow}>AVAILABLE</p>
-          <h2 id="tools-title" className={home.title}>目前可以用的工具</h2>
+          <p className={home.eyebrow}>CALCULATORS</p>
+          <h2 id="tools-title" className={home.title}>試算工具</h2>
           <p className={home.sub}>灰色的是還在做，之後會陸續補上。</p>
 
           <div className={styles.grid}>
-            {TOOLS.map((t) =>
+            {CALCULATORS.map((t) =>
               t.href ? (
                 <a key={t.title} href={t.href} className={styles.card}>
                   <span className={styles.cardTag}>{t.tag}</span>
@@ -133,6 +158,34 @@ export default function ToolsPage() {
             繼承或受贈取得等因素影響。金額較大或情況特殊時，請務必找地政士或稅務專業人員確認。
             有不確定的地方也可以直接問我，我幫您一起看。
           </p>
+        </div>
+      </section>
+
+      {/* ---------- 外部政府查詢系統 ----------
+           不是本人做的，卡片上一律標主辦單位，連結一律新分頁開。 */}
+      <section className={`${home.section} ${home.sectionSoft}`} aria-labelledby="external-title">
+        <div className={home.sectionInner}>
+          <p className={home.eyebrow}>OFFICIAL LOOKUP</p>
+          <h2 id="external-title" className={home.title}>官方查詢系統</h2>
+          <p className={home.sub}>政府提供的公開查詢工具，直接連過去，不用另外註冊。</p>
+
+          <div className={styles.grid}>
+            {EXTERNAL_TOOLS.map((t) => (
+              <a
+                key={t.title}
+                href={t.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.card}
+              >
+                <span className={styles.cardTag}>{t.tag}</span>
+                <h3 className={styles.cardTitle}>{t.title}</h3>
+                <p className={styles.cardDesc}>{t.desc}</p>
+                <span className={styles.cardOrg}>{t.org}　提供</span>
+                <span className={styles.cardGo}>前往查詢（新分頁開啟）</span>
+              </a>
+            ))}
+          </div>
         </div>
       </section>
 
