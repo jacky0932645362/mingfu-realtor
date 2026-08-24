@@ -7,12 +7,24 @@
  *   /card/booking  線上預約
  *
  * 頁面區塊順序（本人指定，不要自己調換）：
- *   1 形象照 → 2 服務區域 → 3 戰績 → 4 服務項目 → 5 預約系統(含LINE)
+ *   1 形象照 → 2 關於我 → 3 服務區域 → 4 專業數據 → 5 成交案例
+ *   → 6 客戶評價 → 7 服務項目 → 8 聯絡/預約系統(含LINE)
+ *
+ *   ⚠️ 2026-08-24 補齊成 8 塊個人品牌架構。既有區塊的相對順序沒有動過
+ *      （服務區域仍在戰績之前，那是本人原本指定的），只把新的三塊插進去。
+ *      通用架構建議把「服務區域」移到客戶評價之後當差異化收尾，
+ *      要不要移是本人的決定，沒有自行調換。
  *
  * 2026-08-13 修正：
  *   ・戰績年份改為 110、111、112 年（先前寫成 111～113 是錯的）
  *   ・服務項目補上「房屋土地買賣」，共四項
  *   ・配色改用 Foresight CIS（深藍/橘/金），色票在 home.module.css 檔頭
+ *
+ * 2026-08-24 新增「成交案例」區塊：
+ *   資料直接讀 property 表的 status='sold'，不另外維護一份案例清單 ——
+ *   後台把物件改成「已成交」，首頁自動長出來。
+ *   沒有任何成交物件時整個區塊不渲染（不要在正式站露出空殼）。
+ *   ⚠️ 卡片刻意不顯示價格：property.price 是「開價」不是成交價。
  *
  * ⚠️ TOP1 措辭禁忌：只能寫「連續三年年度TOP1」，
  *    不可加「全台 / 全國 / 冠軍」——排名範圍未經本人確認。
@@ -20,7 +32,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { OWNER, SOCIAL, SITE_URL } from "@/config/owner";
+import { listSoldProperties, propertyTypeLabel, type PropertyRow } from "@/lib/property";
+import { directImageUrl, parseImageList } from "@/lib/media-url";
 import styles from "./home.module.css";
+
+/**
+ * 成交案例要讀資料庫，所以這頁不再是純靜態。
+ * 首頁不需要即時 —— 一小時重建一次就夠，也省掉每個訪客都打一次資料庫。
+ */
+export const revalidate = 3600;
 
 const BRAND = OWNER.company || OWNER.name;
 
@@ -30,6 +50,71 @@ const AREAS = [
   { name: "龍井", full: "台中市龍井區" },
   { name: "清水", full: "台中市清水區" },
   { name: "梧棲", full: "台中市梧棲區" },
+] as const;
+
+/**
+ * 入行年資與累積成交件數（2026-08-24 本人親口提供）。
+ *
+ * ⚠️ 這兩個數字會直接印在客戶眼前，也寫進 SEO 結構化資料。
+ *    要改一定要問過本人，不要自己推算或四捨五入。
+ */
+const YEARS_IN_TRADE = 8;
+const CLOSED_DEALS = 200;
+
+/**
+ * 關於我 —— 本人 2026-08-24 給的原話理念，一字不改當作結尾。
+ * 前面幾段是把已確認為真的資料（年資、海線四區、加盟店）串成敘事，
+ * 沒有加入任何本人沒說過的經歷。
+ */
+const ABOUT_INTRO = [
+  `入行邁入第 ${YEARS_IN_TRADE} 年，這 ${YEARS_IN_TRADE} 年我幾乎都待在同一個地方——台中海線。`,
+  "沙鹿、龍井、清水、梧棲，每個生活圈的行情怎麼走、哪條路段將來會變、哪個社區的買方最在意什麼，" +
+    "不是查資料查來的，是一間一間走出來的。",
+] as const;
+
+/**
+ * ⚠️ 本人 2026-08-24 的原話，一字不改。
+ * 不要「潤飾」「加強」或改寫成更像廣告的版本 —— 整個關於我區塊就是為了這句話存在，
+ * 客戶讀到的如果是文案腔，這句就白放了。
+ */
+const ABOUT_CREED =
+  "我做房仲，不只是為了成交，而是希望用我的專業，讓客戶在買房這件人生大事上，" +
+  "少走一點冤枉路，找到真正適合自己的家。";
+
+/**
+ * 結尾。這句不是憑空寫的 ——「優缺點都講清楚、不推銷」是三則客戶評價裡
+ * 客戶自己講出來的（見 TESTIMONIALS 第 3 則），等於有佐證，不是編出來的賣點。
+ */
+const ABOUT_OUTRO =
+  "所以帶看的時候，好的壞的我都會講完。寧可您當下多考慮一下，也不要簽完約才發現。";
+
+/**
+ * 客戶評價 —— 全部出自本人 2026-08-24 提供的真實 LINE 訊息，只做了修剪（去掉開頭稱呼、
+ * 收斂 emoji），沒有潤飾也沒有新增句子。
+ *
+ * ⚠️ role 一律寫「買方客戶」：這三位的實際身份（首購／換屋／投資）本人沒有說，
+ *    寫成「首購族」之類會比較好看，但那是捏造。之後本人補了再改。
+ * ⚠️ 不要替客戶加姓氏。原始訊息裡沒有姓名，「王小姐」「李先生」都是編的。
+ */
+const TESTIMONIALS = [
+  {
+    quote:
+      "每次問你問題你都很有耐心，也會站在我們的角度幫忙分析，不會只想著成交，這點讓我們很感動。" +
+      "買房真的不是一件簡單的事情，很幸運可以遇到你這麼認真的房仲。",
+    role: "買方客戶",
+  },
+  {
+    quote:
+      "從看房、比較、議價到後面的流程，你都很細心幫我們處理，有問題也都會第一時間協助。" +
+      "整個過程讓我們安心很多，這次買房能遇到你真的很幸運！",
+    role: "買方客戶",
+  },
+  {
+    quote:
+      "帶我們看房很有耐心，也會把房子的優缺點都跟我們說清楚，不會一直推銷，讓我們覺得很放心。" +
+      "有你幫忙一起分析，找房真的輕鬆很多。",
+    role: "買方客戶",
+  },
 ] as const;
 
 /** 戰績年份（民國）—— 110 + 1911 = 2021 */
@@ -88,8 +173,11 @@ const AREA_TEXT = AREAS.map((a) => a.name).join("、");
 const SERVICE_TEXT = SERVICES.map((s) => s.title).join("、");
 
 const DESCRIPTION =
-  `${OWNER.name}（${OWNER.brandPersona}）｜${BRAND}。專營台中海線（${AREA_TEXT}）房屋與土地買賣，` +
-  `110、111、112年連續三年榮獲年度TOP1。提供${SERVICE_TEXT}等服務，` +
+  // 年資與成交件數放最前面：搜尋結果只看得到前面幾十個字，
+  // 「深耕第8年・成交200件」比服務項目列表更能決定客戶點不點進來。
+  `${OWNER.name}（${OWNER.brandPersona}）｜${BRAND}。深耕台中海線第 ${YEARS_IN_TRADE} 年，` +
+  `累積成交 ${CLOSED_DEALS} 件，110、111、112年連續三年年度TOP1。` +
+  `專營${AREA_TEXT}的${SERVICE_TEXT}，` +
   `可線上預約諮詢或加LINE（${OWNER.phoneRaw}）直接聊。`;
 
 const OG_IMAGE = `${SITE_URL}/profile.jpg`;
@@ -219,7 +307,17 @@ const JSON_LD = {
   ],
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  /* 案例牆撈不到資料時，首頁其他部分要照常出現 ——
+     門面頁不能因為資料庫連線問題就整頁 500。 */
+  let soldCases: PropertyRow[] = [];
+  try {
+    soldCases = await listSoldProperties(6);
+  } catch {
+    soldCases = [];
+  }
+  const hasCases = soldCases.length > 0;
+
   return (
     <main className={styles.page}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
@@ -231,8 +329,11 @@ export default function HomePage() {
             <span>・{BRAND}</span>
           </a>
           <nav className={styles.navLinks} aria-label="主選單">
+            <a href="#about">關於我</a>
             <a href="#service-area">服務區域</a>
             <a href="#achievements">我的戰績</a>
+            {hasCases ? <a href="#cases">成交案例</a> : null}
+            <a href="#testimonials">客戶評價</a>
             <a href="#services">服務項目</a>
             <a href="#booking">預約諮詢</a>
           </nav>
@@ -270,10 +371,14 @@ export default function HomePage() {
               專營台中海線・沙鹿・龍井・清水・梧棲<br />
               <em>房屋 ‧ 土地買賣</em>
             </p>
+            {/* 2026-08-24 改短。
+                原本這裡是三行長描述（TOP1＋服務理念），但新增「關於我」區塊之後
+                那三行跟關於我講的是同一件事，客戶等於連讀兩遍。
+                首屏只負責回答「你是誰、憑什麼信你」——年資與成交件數最快，
+                TOP1 旁邊的徽章已經寫了不必再講一次；理念留給關於我展開。 */}
             <p className={styles.heroDesc}>
-              在海線市場一路做到 110、111、112 年連續三年年度TOP1。
-              買房賣房不只是喊個價格，我會把行情、稅、貸款、後續怎麼處理一次講清楚，
-              讓您在簽名之前，就知道自己在決定什麼。
+              深耕台中海線第 {YEARS_IN_TRADE} 年，累積成交 {CLOSED_DEALS} 件。
+              買房賣房不只是喊個價格——行情、稅、貸款怎麼算，我會在您簽名之前講清楚。
             </p>
             <div className={styles.heroActions}>
               <Link href="/card/booking" className={`${styles.btn} ${styles.btnPrimary}`}>線上預約諮詢</Link>
@@ -290,7 +395,33 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ---------- 2. 服務區域 ---------- */}
+      {/* ---------- 2. 關於我 ----------
+           客戶看完照片之後的第一個問題是「你是誰、憑什麼信你」。
+           這塊刻意不放第二張照片（hero already 有一張，再放一張會變成沙龍照牆），
+           也刻意不寫成履歷條列——本人指定要「故事感」不要制式履歷。 */}
+      <section id="about" className={`${styles.section} ${styles.sectionSoft}`} aria-labelledby="about-title">
+        <div className={styles.sectionInner}>
+          <p className={styles.eyebrow}>ABOUT ME</p>
+          <h2 id="about-title" className={styles.title}>關於我</h2>
+
+          <div className={styles.aboutBody}>
+            {ABOUT_INTRO.map((para) => (
+              <p key={para} className={styles.aboutPara}>{para}</p>
+            ))}
+
+            <blockquote className={styles.aboutCreed}>{ABOUT_CREED}</blockquote>
+
+            <p className={styles.aboutPara}>{ABOUT_OUTRO}</p>
+          </div>
+
+          <p className={styles.aboutSign}>
+            {OWNER.name}
+            <span>（{OWNER.brandPersona}）・{OWNER.title}</span>
+          </p>
+        </div>
+      </section>
+
+      {/* ---------- 3. 服務區域 ---------- */}
       <section id="service-area" className={styles.section} aria-labelledby="service-area-title">
         <div className={styles.sectionInner}>
           <p className={styles.eyebrow}>SERVICE AREA</p>
@@ -312,7 +443,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ---------- 3. 戰績 ---------- */}
+      {/* ---------- 4. 專業數據 ／ 戰績 ---------- */}
       <section id="achievements" className={`${styles.section} ${styles.achvSection}`} aria-labelledby="achievements-title">
         <div className={styles.sectionInner}>
           <p className={`${styles.eyebrow} ${styles.eyebrowLight}`}>ACHIEVEMENTS</p>
@@ -328,18 +459,31 @@ export default function HomePage() {
             ))}
           </div>
 
+          {/* 2026-08-24 換掉原本的「3／4／2」。
+              那三個數字是把已知資訊硬湊成統計（連續三年、四個區、兩種類型），
+              看起來有數據其實沒有資訊量。改成本人親口給的年資與累積成交件數，
+              這兩個才是客戶會拿來判斷「這個人靠不靠得住」的東西。 */}
           <div className={styles.statRow}>
             <div>
-              <span className={styles.statNum}>3</span>
-              <span className={styles.statLabel}>連續三年年度TOP1</span>
+              <span className={styles.statNum}>{YEARS_IN_TRADE}</span>
+              <span className={styles.statUnit}>年</span>
+              <span className={styles.statLabel}>海線深耕年資（入行邁入第 {YEARS_IN_TRADE} 年）</span>
             </div>
             <div>
-              <span className={styles.statNum}>4</span>
+              <span className={styles.statNum}>{CLOSED_DEALS}</span>
+              <span className={styles.statUnit}>件</span>
+              <span className={styles.statLabel}>累積成交件數</span>
+            </div>
+            <div>
+              <span className={styles.statNum}>{AREAS.length}</span>
+              <span className={styles.statUnit}>區</span>
               <span className={styles.statLabel}>深耕行政區（沙鹿・龍井・清水・梧棲）</span>
             </div>
             <div>
-              <span className={styles.statNum}>2</span>
-              <span className={styles.statLabel}>專營類型（房屋・土地）</span>
+              <span className={styles.statNum}>{YEARS.length}</span>
+              <span className={styles.statUnit}>年</span>
+              {/* ⚠️ 措辭禁忌：只能寫「連續三年年度TOP1」，不可加全台／全國／冠軍 */}
+              <span className={styles.statLabel}>連續年度TOP1（110・111・112年）</span>
             </div>
           </div>
 
@@ -348,7 +492,81 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ---------- 4. 服務項目 ---------- */}
+      {/* ---------- 5. 成交案例 ----------
+           資料來源＝後台標記為「已成交」的物件。一筆都沒有就整塊不渲染。 */}
+      {hasCases ? (
+        <section id="cases" className={`${styles.section} ${styles.sectionSoft}`} aria-labelledby="cases-title">
+          <div className={styles.sectionInner}>
+            <p className={styles.eyebrow}>CLOSED CASES</p>
+            <h2 id="cases-title" className={styles.title}>成交案例</h2>
+            <p className={styles.sub}>
+              這些是已經交屋完成的物件。想找類似條件的，直接跟我說，手上沒有我會去找。
+            </p>
+
+            <div className={styles.caseGrid}>
+              {soldCases.map((p) => {
+                const cover = p.cover_url
+                  ? directImageUrl(p.cover_url)
+                  : parseImageList(p.photo_urls)[0];
+                const meta = [p.district, propertyTypeLabel(p), p.layout, p.floor_info, p.parking]
+                  .filter(Boolean)
+                  .join("・");
+                return (
+                  <Link key={p.id} href={`/property/${p.slug}`} className={styles.caseCard}>
+                    <div className={styles.caseCover}>
+                      {cover ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={cover} alt={`${p.title}（已成交）`} loading="lazy" />
+                      ) : (
+                        <span className={styles.caseNoPhoto}>{p.district || "台中海線"}</span>
+                      )}
+                      <span className={styles.caseBadge}>已成交</span>
+                    </div>
+                    <div className={styles.caseBody}>
+                      {/* ⚠️ 這裡刻意不用 headline。headline 是行銷標題，寫的時候
+                          幾乎一定會把開價包進去（實測示範資料就是「698萬買得到高樓海景？」），
+                          放在成交案例牆上等同對外宣稱那是成交價。
+                          社區名最有辨識度也最安全，沒填社區名才退回 title。 */}
+                      <span className={styles.caseTitle}>
+                        {p.community?.trim() || p.title}
+                      </span>
+                      {meta ? <span className={styles.caseMeta}>{meta}</span> : null}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* 成交價一律不寫。開價≠成交價，把開價當成交行情給客戶看會出事。 */}
+            <p className={styles.caseNote}>
+              ※ 為保護買賣雙方，成交價格不對外公開。想了解區域行情，歡迎預約當面聊。
+            </p>
+          </div>
+        </section>
+      ) : null}
+
+      {/* ---------- 6. 客戶評價 ----------
+           白底，不套 sectionSoft：前面的成交案例與後面的服務項目都是淺灰，
+           三塊連在一起會糊成一片，中間這塊留白才分得開。 */}
+      <section id="testimonials" className={styles.section} aria-labelledby="testimonials-title">
+        <div className={styles.sectionInner}>
+          <p className={styles.eyebrow}>TESTIMONIALS</p>
+          <h2 id="testimonials-title" className={styles.title}>客戶怎麼說</h2>
+          <p className={styles.sub}>以下是客戶傳來的訊息原文，只做了長度修剪，沒有潤飾。</p>
+
+          <div className={styles.tmGrid}>
+            {TESTIMONIALS.map((t) => (
+              <figure key={t.quote} className={styles.tmCard}>
+                <span className={styles.tmMark} aria-hidden="true">&ldquo;</span>
+                <blockquote className={styles.tmQuote}>{t.quote}</blockquote>
+                <figcaption className={styles.tmRole}>{t.role}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- 7. 服務項目 ---------- */}
       <section id="services" className={`${styles.section} ${styles.sectionSoft}`} aria-labelledby="services-title">
         <div className={styles.sectionInner}>
           <p className={styles.eyebrow}>SERVICES</p>
@@ -368,7 +586,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ---------- 5. 預約系統（含 LINE） ---------- */}
+      {/* ---------- 8. 聯絡方式 ／ 預約系統（含 LINE） ---------- */}
       <section id="booking" className={`${styles.section} ${styles.bookingSection}`} aria-labelledby="booking-title">
         <div className={`${styles.sectionInner} ${styles.bookingInner}`}>
           <div>

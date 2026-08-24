@@ -111,6 +111,14 @@ export default async function TenantsPage({
           </div>
           <div className={styles.headerActions}>
             <Link
+              href="/admin/properties"
+              className={styles.button}
+              style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
+            >
+              <Icon name="building" size={15} />
+              房屋物件
+            </Link>
+            <Link
               href="/admin/customers"
               className={styles.button}
               style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}

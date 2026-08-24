@@ -305,6 +305,45 @@
 .sub { color: var(--muted); margin: 0 0 52px; font-size: 1rem; }
 .subLight { color: rgba(255, 255, 255, .78); }
 
+/* ---------- 關於我 ----------
+   文章型區塊，不是卡片牆。行寬壓在 42em 左右（中文約 30 字）——
+   再寬讀者的眼睛換行時會找不到下一行的開頭，這塊是整頁字最多的地方。 */
+.aboutBody {
+  max-width: 42em;
+  margin: 0 auto;
+  text-align: left;
+}
+.aboutPara {
+  margin: 0 0 20px;
+  font-size: 1.02rem;
+  line-height: 1.95;
+  color: var(--brand-ink);
+}
+/* 本人的理念原話。左側紅線＋放大，讓它在整段文章裡是視覺重心。 */
+.aboutCreed {
+  margin: 28px 0;
+  padding: 4px 0 4px 22px;
+  border-left: 3px solid var(--brand-primary);
+  font-size: clamp(1.08rem, 2.4vw, 1.28rem);
+  font-weight: 700;
+  line-height: 1.85;
+  color: var(--brand-ink);
+}
+.aboutSign {
+  max-width: 42em;
+  margin: 32px auto 0;
+  text-align: right;
+  font-weight: 800;
+  color: var(--brand-primary);
+}
+.aboutSign span {
+  display: block;
+  margin-top: 4px;
+  font-size: .86rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
 /* ---------- 服務區域 ---------- */
 .areaGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
 .areaCard {
@@ -352,23 +391,36 @@
 .achvRank { font-size: 1.55rem; font-weight: 900; color: var(--white); letter-spacing: .04em; }
 
 /* 數字統計列 */
+/* 2026-08-24：從 3 欄改 4 欄（多了「累積成交件數」）。
+   手機壓成 2 欄，四個數字剛好排成 2×2，不會變成一長串。 */
 .statRow {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
-  max-width: 820px;
+  max-width: 900px;
   margin: 44px auto 0;
   padding-top: 36px;
   border-top: 1px solid rgba(238, 130, 138, .35);
 }
+/* 數字與單位要並排（200 件），所以 statNum 不能再是 block；
+   換行改由 statLabel 自己負責。 */
 .statNum {
   font-size: clamp(2.2rem, 5vw, 2.9rem);
   font-weight: 900;
   color: var(--brand-highlight);
   line-height: 1.2;
-  display: block;
+  display: inline-block;
 }
-.statLabel { font-size: .9rem; color: rgba(255, 255, 255, .82); }
+.statUnit {
+  display: inline-block;
+  margin-left: 3px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--brand-highlight);
+}
+.statLabel { display: block; font-size: .9rem; color: rgba(255, 255, 255, .82); }
+/* 窄螢幕的欄數統一在下面那個 max-width:700px 區塊處理（它在後面會蓋過這裡，
+   分兩處寫只會互相打架）——不要在這裡再加 .statRow 的 media query。 */
 
 .achvHighlight {
   margin-top: 40px;
@@ -384,8 +436,141 @@
 }
 @media (max-width: 700px) {
   .achvGrid { grid-template-columns: 1fr; }
-  .statRow { grid-template-columns: 1fr; gap: 26px; }
+  /* 2026-08-24 從 1 欄改 2 欄：數字從 3 個變 4 個，單欄會排成很長一串
+     （手機要滑很久才看完四個數字），2×2 一眼看得完。 */
+  .statRow { grid-template-columns: repeat(2, 1fr); gap: 26px 16px; }
 }
+
+/* ---------- 成交案例 ----------
+   資料是後台標記「已成交」的物件，沒有就整塊不渲染，所以這裡不用處理空狀態。
+   卡片刻意沒有價格列（開價≠成交價），版面因此比 /property 的卡片矮一截。 */
+/* 卡片上限 380px 並置中：成交案例是慢慢累積的，只有 1～2 筆的時候
+   repeat(3,1fr) 會左對齊、右邊空一大塊；純 auto-fit 又會讓兩張卡
+   各撐一半、封面被拉得比實際照片還大。這樣寫兩個問題一次解決。 */
+.caseGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 380px));
+  justify-content: center;
+  gap: 22px;
+  text-align: left;
+}
+.caseCard {
+  display: block;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--white);
+  border: 1px solid var(--border-soft);
+  text-decoration: none;
+  color: inherit;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.caseCard:hover {
+  transform: translateY(-4px);
+  border-color: var(--brand-highlight);
+  box-shadow: 0 14px 30px rgba(35, 24, 21, .14);
+}
+.caseCover {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--brand-primary-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.caseCover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.caseNoPhoto {
+  color: var(--brand-primary);
+  font-weight: 800;
+  font-size: 1.1rem;
+  letter-spacing: .12em;
+}
+/* 已成交徽章：紅底一律白字（見檔頭無障礙鐵律，紅底配棕字只有 3.33:1） */
+.caseBadge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-primary);
+  color: var(--cta-text);
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+.caseBody { padding: 16px 18px 20px; }
+.caseTitle {
+  display: block;
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--brand-ink);
+}
+.caseMeta {
+  display: block;
+  margin-top: 8px;
+  font-size: .86rem;
+  color: var(--muted);
+}
+.caseNote {
+  margin: 34px 0 0;
+  font-size: .85rem;
+  color: var(--muted);
+}
+/* auto-fit 本來就會自己降欄，只有手機要壓成單欄並解掉 380px 上限，
+   否則窄螢幕上卡片會停在 380px 而左右留白。 */
+@media (max-width: 560px) { .caseGrid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- 客戶評價 ----------
+   三則等寬卡片。卡片本身不做 hover 位移：這裡沒有連結可點，
+   會動的東西會讓人以為點得下去。 */
+.tmGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  text-align: left;
+  align-items: stretch;
+}
+.tmCard {
+  position: relative;
+  margin: 0;
+  padding: 30px 26px 24px;
+  border-radius: var(--radius);
+  background: var(--white);
+  border: 1px solid var(--border-soft);
+  border-top: 3px solid var(--brand-primary);
+  display: flex;
+  flex-direction: column;
+}
+/* 裝飾用的大引號。粉色在白底上只有 2.56:1，不能拿來寫字，
+   但當純裝飾（aria-hidden）沒有對比度要求。 */
+.tmMark {
+  position: absolute;
+  top: 6px;
+  left: 18px;
+  font-size: 3.4rem;
+  line-height: 1;
+  color: var(--brand-highlight-soft);
+  font-family: Georgia, "Times New Roman", serif;
+  pointer-events: none;
+}
+.tmQuote {
+  position: relative;
+  margin: 0 0 18px;
+  font-size: .97rem;
+  line-height: 1.9;
+  color: var(--brand-ink);
+  flex: 1;
+}
+.tmRole {
+  font-size: .84rem;
+  font-weight: 700;
+  color: var(--muted);
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+}
+.tmRole::before { content: "— "; }
+@media (max-width: 900px) { .tmGrid { grid-template-columns: 1fr; } }
 
 /* ---------- 服務項目 ---------- */
 .servicesGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
@@ -551,6 +736,7 @@
 @media (prefers-reduced-motion: reduce) {
   .btn:hover,
   .areaCard:hover,
+  .caseCard:hover,
   .serviceCard:hover,
   .floatLine:hover { transform: none; }
 }

@@ -6,17 +6,40 @@
  */
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/config/owner";
+import { listPublicProperties } from "@/lib/property";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+// 物件會上下架，sitemap 不能被靜態快取成建置當下那份
+export const dynamic = "force-dynamic";
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = SITE_URL.replace(/\/+$/, "");
   const now = new Date();
 
-  return [
+  const fixed: MetadataRoute.Sitemap = [
     // 首頁 —— 客戶搜「梧棲房仲」進來的主要落地頁
     { url: `${base}/`, lastModified: now, changeFrequency: "weekly", priority: 1 },
     // 數位名片
     { url: `${base}/card`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     // 線上預約
     { url: `${base}/card/booking`, lastModified: now, changeFrequency: "monthly", priority: 0.9 },
+    // 物件列表
+    { url: `${base}/property`, lastModified: now, changeFrequency: "daily", priority: 0.9 },
   ];
+
+  // 每一個上架中的物件各自一條。資料庫連不上時不要讓整個 sitemap 掛掉 ——
+  // 少幾條物件頁只是少被收錄，sitemap 整份 500 會讓 Google 連首頁都讀不到。
+  try {
+    const properties = await listPublicProperties({ limit: 200 });
+    return [
+      ...fixed,
+      ...properties.map((p) => ({
+        url: `${base}/property/${p.slug}`,
+        lastModified: p.updated_at || p.published_at || p.created_at || now,
+        changeFrequency: "weekly" as const,
+        priority: 0.8,
+      })),
+    ];
+  } catch {
+    return fixed;
+  }
 }
