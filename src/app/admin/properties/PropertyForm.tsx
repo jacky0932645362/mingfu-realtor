@@ -54,15 +54,92 @@ const hintStyle: React.CSSProperties = {
   marginTop: -2,
 };
 
+/** 上傳鈕。實際的 <input type="file"> 藏在 label 裡（原生檔案輸入框長得很醜且無法統一樣式）。 */
+const uploadBtnStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  minHeight: 40,
+  padding: "0 14px",
+  borderRadius: 7,
+  border: `1px solid ${CIS.cardBorder}`,
+  background: "rgba(90,145,225,0.14)",
+  color: CIS.text,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
 export default function PropertyForm({
   property,
   siteUrl,
+  uploadEnabled = false,
 }: {
   property?: PropertyRow;
   siteUrl: string;
+  /** 這台機器有沒有設定 Cloudinary。false 就完全不顯示上傳鈕，退回原本的貼網址流程。 */
+  uploadEnabled?: boolean;
 }) {
   const router = useRouter();
   const isEdit = Boolean(property);
+
+  /* ── 照片上傳（Cloudinary signed upload）──
+     檔案不經過我們的伺服器：跟後台換一張簽章，然後瀏覽器直接 POST 給 Cloudinary。
+     成功後把回傳的 secure_url 填進對應欄位，剩下的流程跟手貼網址完全一樣，
+     所以下面的預覽、驗證、存檔都不用改。 */
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState("");
+
+  async function uploadFiles(files: FileList | null): Promise<string[]> {
+    if (!files || files.length === 0) return [];
+    const sigRes = await fetch("/api/admin/upload-signature", { method: "POST" });
+    if (!sigRes.ok) {
+      const body = await sigRes.json().catch(() => ({}));
+      throw new Error(body.error || `無法取得上傳授權（${sigRes.status}）`);
+    }
+    const sig = await sigRes.json();
+
+    const urls: string[] = [];
+    for (let i = 0; i < files.length; i += 1) {
+      const file = files[i];
+      setUploadMsg(`上傳中 ${i + 1}/${files.length}：${file.name}`);
+      const fd = new FormData();
+      // 這幾個欄位必須跟伺服器簽章時用的參數完全一致，多送少送都會被 Cloudinary 擋成 401
+      fd.append("file", file);
+      fd.append("api_key", sig.apiKey);
+      fd.append("timestamp", String(sig.timestamp));
+      fd.append("folder", sig.folder);
+      fd.append("signature", sig.signature);
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${sig.cloudName}/image/upload`, {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.secure_url) {
+        throw new Error(json?.error?.message || `${file.name} 上傳失敗`);
+      }
+      urls.push(json.secure_url as string);
+    }
+    return urls;
+  }
+
+  /** 包一層共用的狀態處理，兩個上傳鈕都走這裡，錯誤一律顯示給使用者不要吞掉。 */
+  async function handleUpload(files: FileList | null, onDone: (urls: string[]) => void) {
+    setUploading(true);
+    setUploadMsg("");
+    try {
+      const urls = await uploadFiles(files);
+      if (urls.length > 0) {
+        onDone(urls);
+        setUploadMsg(`✅ 已上傳 ${urls.length} 張`);
+      }
+    } catch (err) {
+      setUploadMsg(`❌ ${err instanceof Error ? err.message : "上傳失敗"}`);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const [title, setTitle] = useState(property?.title ?? "");
   const [headline, setHeadline] = useState(property?.headline ?? "");
@@ -525,8 +602,18 @@ export default function PropertyForm({
         >
           照片跟影片都<strong>不存在這個網站</strong>，這裡只存網址。
           <br />
-          📷 <strong>照片</strong>：貼圖片的直接網址（結尾通常是 .jpg／.png）。
-          Google Drive 與 Dropbox 的分享連結會自動換成直連，但檔案必須設成「知道連結的人都可以檢視」。
+          📷 <strong>照片</strong>：
+          {uploadEnabled ? (
+            <>
+              直接按下面的<strong>上傳</strong>選檔案，會自動傳好並把網址填進來（手機拍的也可以）。
+              已經有網址的話照樣可以自己貼。
+            </>
+          ) : (
+            <>
+              貼圖片的直接網址（結尾通常是 .jpg／.png）。 Google Drive
+              與 Dropbox 的分享連結會自動換成直連，但檔案必須設成「知道連結的人都可以檢視」。
+            </>
+          )}
           <br />
           🎬 <strong>影片</strong>：貼 YouTube 連結就好，Shorts 也可以。
           影片本身建議設成「<strong>不公開</strong>」——有連結的人看得到，但不會出現在你的頻道列表。
@@ -546,6 +633,27 @@ export default function PropertyForm({
             />
           </label>
         </div>
+
+        {uploadEnabled ? (
+          <div style={{ marginTop: 8 }}>
+            <label style={{ ...uploadBtnStyle, opacity: uploading ? 0.55 : 1 }}>
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                disabled={uploading}
+                onChange={(e) => {
+                  const files = e.target.files;
+                  // 先清空 value，否則選同一個檔案第二次不會觸發 onChange
+                  e.target.value = "";
+                  handleUpload(files, (urls) => setCoverUrl(urls[0]));
+                }}
+              />
+              <Icon name="image" size={15} />
+              {uploading ? "上傳中…" : "上傳封面照片"}
+            </label>
+          </div>
+        ) : null}
         {coverPreview ? (
           <div style={{ marginTop: 10 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -576,6 +684,37 @@ export default function PropertyForm({
             />
           </label>
         </div>
+
+        {uploadEnabled ? (
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <label style={{ ...uploadBtnStyle, opacity: uploading ? 0.55 : 1 }}>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                disabled={uploading}
+                onChange={(e) => {
+                  const files = e.target.files;
+                  e.target.value = "";
+                  // 接在既有清單後面，不要蓋掉已經填好的網址
+                  handleUpload(files, (urls) =>
+                    setPhotoUrls((prev) => [prev.trim(), ...urls].filter(Boolean).join("\n")),
+                  );
+                }}
+              />
+              <Icon name="image" size={15} />
+              {uploading ? "上傳中…" : "上傳多張照片"}
+            </label>
+            {uploadMsg ? (
+              <span style={{ fontSize: 13, color: CIS.textSub }}>{uploadMsg}</span>
+            ) : (
+              <span style={{ fontSize: 13, color: CIS.textMute }}>
+                可一次選多張，上傳完會自動接在上面的清單後面
+              </span>
+            )}
+          </div>
+        ) : null}
         {photoPreviews.length > 0 ? (
           <div style={{ marginTop: 8 }}>
             <div style={{ fontSize: 13, color: CIS.textMute, marginBottom: 6 }}>

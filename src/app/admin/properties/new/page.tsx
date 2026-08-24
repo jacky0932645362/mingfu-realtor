@@ -5,6 +5,7 @@ import { SITE_URL } from "@/config/owner";
 import { CIS } from "@/app/admin/_components/cis";
 import { Icon } from "@/app/admin/_ui/icons";
 import PropertyForm from "../PropertyForm";
+import { cloudinaryEnabled } from "@/lib/cloudinary";
 import styles from "../../customers/customers.module.css";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export default async function NewPropertyPage() {
             </Link>
           </div>
         </div>
-        <PropertyForm siteUrl={SITE_URL} />
+        <PropertyForm siteUrl={SITE_URL} uploadEnabled={cloudinaryEnabled()} />
       </div>
     </main>
   );

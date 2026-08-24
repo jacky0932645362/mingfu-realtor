@@ -6,6 +6,7 @@ import { SITE_URL } from "@/config/owner";
 import { CIS } from "@/app/admin/_components/cis";
 import { Icon } from "@/app/admin/_ui/icons";
 import PropertyForm from "../PropertyForm";
+import { cloudinaryEnabled } from "@/lib/cloudinary";
 import ShareLinkBar from "../ShareLinkBar";
 import styles from "../../customers/customers.module.css";
 
@@ -72,6 +73,7 @@ export default async function PropertyDetailPage({
           key={`${property.id}-${property.updated_at?.getTime() ?? 0}`}
           property={property}
           siteUrl={SITE_URL}
+          uploadEnabled={cloudinaryEnabled()}
         />
       </div>
     </main>
