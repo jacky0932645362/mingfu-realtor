@@ -1,0 +1,1748 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>房地合一稅試算｜蕭茗馥・台中海線房產顧問</title>
+<meta name="description" content="房地合一稅試算工具：輸入買價賣價算出稅金與實拿，或反推該開多少價才能達到目標淨利。持有期間可直接點稅率，也可填日期算出再撐幾天稅率會降。">
+<meta name="robots" content="index,follow">
+<!-- ⚠️ 這個檔是從 Agent-OS/tools/land-tax-calculator.html 產生的，
+     不要直接改這裡 —— 改了會在下次重新產生時被蓋掉。改原檔再重跑包裝腳本。 -->
+</head>
+<body>
+
+<!-- 官網返回列。這個工具有自己一整套配色（公文紙灰＋墨青），
+     不改它的視覺，只在最上面加一條認得出是誰家的列。 -->
+<div id="site-back-bar">
+  <a href="/" class="sbb-brand">蕭茗馥<span>・房仲蕭邦</span></a>
+  <span class="sbb-links">
+    <a href="/tools">其他工具</a>
+    <a href="/card/booking">預約諮詢</a>
+  </span>
+</div>
+<style>
+  #site-back-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:10px 18px;background:#231815;border-bottom:3px solid #E00000;
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+  }
+  #site-back-bar .sbb-brand{color:#fff;font-weight:900;font-size:1rem;text-decoration:none;white-space:nowrap}
+  #site-back-bar .sbb-brand span{font-weight:500;font-size:.72rem;color:rgba(255,255,255,.72);margin-left:6px}
+  #site-back-bar .sbb-links{display:flex;gap:16px;flex-wrap:wrap}
+  #site-back-bar .sbb-links a{color:rgba(255,255,255,.88);text-decoration:none;font-size:.86rem;font-weight:600;white-space:nowrap}
+  #site-back-bar .sbb-links a:hover{color:#fff;text-decoration:underline}
+  @media (max-width:460px){ #site-back-bar .sbb-brand span{display:none} }
+</style>
+
+<style>
+  /* ── 色票：公文紙冷青灰 × 墨青近黑 × 太平洋紅（單一重點） ───────── */
+  :root {
+    --ground:   #EBEEEF;
+    --surface:  #FFFFFF;
+    --surface-2:#F5F7F7;
+    --ink:      #161E20;
+    --ink-2:    #4A585B;
+    --ink-3:    #68787B;
+    --rule:     #D2DADC;
+    --rule-soft:#E4E9EA;
+    --brand:    #E00000;
+    --brand-ink:#FFFFFF;
+    --on-ink-dim: rgba(255,255,255,.62);
+    --tax:      #A8480C;
+    --tax-bg:   #FBF0E7;
+    --gain:     #0B6B5E;
+    --gain-bg:  #E7F2F0;
+    --loss:     #A11616;
+    --shadow:   0 1px 2px rgba(22,30,32,.06), 0 8px 24px -12px rgba(22,30,32,.18);
+    --focus:    #0B6B5E;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", "Roboto Mono", Consolas, "Liberation Mono", monospace;
+    --sans: "Helvetica Neue", Helvetica, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Segoe UI", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #101617;
+      --surface:  #182123;
+      --surface-2:#1E292B;
+      --ink:      #E4EBEC;
+      --ink-2:    #A7B6B8;
+      --ink-3:    #8B9B9E;
+      --rule:     #2C393B;
+      --rule-soft:#232F31;
+      --brand:    #FF5252;
+      --brand-ink:#1A0505;
+      --on-ink-dim: rgba(0,0,0,.66);
+      --tax:      #E39359;
+      --tax-bg:   #2A2019;
+      --gain:     #46C4AC;
+      --gain-bg:  #142A28;
+      --loss:     #FF6B6B;
+      --shadow:   0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+      --focus:    #46C4AC;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #101617;
+    --surface:  #182123;
+    --surface-2:#1E292B;
+    --ink:      #E4EBEC;
+    --ink-2:    #A7B6B8;
+    --ink-3:    #8B9B9E;
+    --rule:     #2C393B;
+    --rule-soft:#232F31;
+    --brand:    #FF5252;
+    --brand-ink:#1A0505;
+    --on-ink-dim: rgba(0,0,0,.66);
+    --tax:      #E39359;
+    --tax-bg:   #2A2019;
+    --gain:     #46C4AC;
+    --gain-bg:  #142A28;
+    --loss:     #FF6B6B;
+    --shadow:   0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+    --focus:    #46C4AC;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 72px;
+  }
+
+  /* ── 頁首 ─────────────────────────────────────────────── */
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 18px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 24px;
+  }
+  .masthead h1 {
+    margin: 0;
+    font-size: clamp(26px, 4.2vw, 38px);
+    letter-spacing: -.02em;
+    font-weight: 700;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+  .masthead h1 .amp { color: var(--brand); }
+  .sub {
+    margin: 6px 0 0;
+    color: var(--ink-2);
+    font-size: 14.5px;
+    max-width: 62ch;
+  }
+  .stamp {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--brand);
+    border: 1.5px solid var(--brand);
+    border-radius: 3px;
+    padding: 5px 9px;
+    white-space: nowrap;
+    line-height: 1.3;
+    text-align: center;
+  }
+
+  /* ── 模式切換 ─────────────────────────────────────────── */
+  .modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--surface);
+    margin-bottom: 22px;
+  }
+  .mode-btn {
+    appearance: none;
+    border: 0;
+    background: var(--surface);
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 14.5px;
+    font-weight: 600;
+    padding: 13px 14px;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-left: 1px solid var(--rule);
+    transition: background .15s, color .15s;
+  }
+  .mode-btn:first-child { border-left: 0; }
+  .mode-btn small {
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--ink-3);
+    letter-spacing: 0;
+  }
+  .mode-btn[aria-selected="true"] {
+    background: var(--ink);
+    color: var(--surface);
+  }
+  .mode-btn[aria-selected="true"] small { color: var(--on-ink-dim); }
+  .mode-btn:hover:not([aria-selected="true"]) { background: var(--surface-2); }
+  .mode-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -3px; }
+
+  /* ── 版面：左表單 / 右計算單 ──────────────────────────── */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 390px) 1fr;
+    gap: 22px;
+    align-items: start;
+  }
+  /* grid／flex 子項預設 min-width:auto，裡面的 min-width:520px 比較表會把整欄撐寬，
+     連帶讓左邊的表單也跟著變寬並讓整頁橫向捲動。一律歸零，改由容器自己橫捲。 */
+  .layout > *, .stack > * { min-width: 0; }
+  @media (max-width: 880px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+  }
+
+  .card-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .card-head h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    font-family: var(--mono);
+    color: var(--ink-2);
+  }
+  .card-body { padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+
+  /* ── 表單 ─────────────────────────────────────────────── */
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > label {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .field .hint { font-weight: 400; font-size: 11.5px; color: var(--ink-3); }
+
+  .money {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  .money:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
+  .money input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 17px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    padding: 10px 8px 10px 12px;
+    outline: none;
+  }
+  .money .unit {
+    display: flex;
+    align-items: center;
+    padding: 0 11px;
+    background: var(--rule-soft);
+    border-left: 1px solid var(--rule);
+    font-size: 12.5px;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .money.pct input { text-align: right; }
+
+  select, input[type="date"] {
+    width: 100%;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--surface-2);
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 14.5px;
+    padding: 10px 11px;
+    outline: none;
+  }
+  input[type="date"] { font-family: var(--mono); font-size: 14px; }
+  select:focus-visible, input[type="date"]:focus-visible {
+    border-color: var(--focus);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent);
+  }
+
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .checks { display: flex; flex-direction: column; gap: 10px; }
+  .check {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 11px 12px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--surface-2);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .check:hover { border-color: var(--ink-3); }
+  .check:has(input:checked) {
+    border-color: var(--gain);
+    background: var(--gain-bg);
+  }
+  .check input { margin: 3px 0 0; accent-color: var(--gain); flex: none; width: 15px; height: 15px; }
+  .check-text { display: flex; flex-direction: column; gap: 1px; }
+  .check-text b { font-size: 13.5px; font-weight: 650; }
+  .check-text span { font-size: 11.5px; color: var(--ink-2); line-height: 1.45; }
+  .check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  details.adv { border-top: 1px solid var(--rule-soft); padding-top: 14px; }
+  details.adv > summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 650;
+    color: var(--ink-2);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    user-select: none;
+  }
+  details.adv > summary::-webkit-details-marker { display: none; }
+  details.adv > summary::before {
+    content: "▸";
+    font-family: var(--mono);
+    color: var(--ink-3);
+    transition: transform .15s;
+    display: inline-block;
+  }
+  details.adv[open] > summary::before { transform: rotate(90deg); }
+  details.adv > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 3px; }
+  .adv-body { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+  /* ── 稅率快選按鈕 ─────────────────────────────────────── */
+  .rate-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .rate-btn {
+    appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    padding: 9px 3px 8px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--ink);
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .14s, border-color .14s, color .14s;
+    min-width: 0;
+  }
+  .rate-btn:hover { border-color: var(--ink-3); background: var(--surface); }
+  .rate-btn .rb-pct {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+  }
+  .rate-btn .rb-len {
+    font-size: 10.5px;
+    color: var(--ink-2);
+    white-space: nowrap;
+    letter-spacing: -.01em;
+  }
+  .rate-btn[aria-pressed="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--surface);
+  }
+  .rate-btn[aria-pressed="true"] .rb-len { color: var(--on-ink-dim); }
+  .rate-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .rate-btn.locked { cursor: default; opacity: .55; }
+  .rate-btn.locked:hover { border-color: var(--rule); background: var(--surface-2); }
+
+  .picker-switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 2px;
+  }
+  .linkbtn {
+    appearance: none;
+    border: 0;
+    background: none;
+    padding: 0;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--ink-2);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .linkbtn:hover { color: var(--brand); }
+  .linkbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+  .override-note {
+    font-size: 11.5px;
+    color: var(--tax);
+    background: var(--tax-bg);
+    border-radius: 4px;
+    padding: 6px 9px;
+    line-height: 1.45;
+  }
+
+  /* ── 可認列成本：未加入的用虛線 chip，加入後變成明細列 ──── */
+  .cost-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    appearance: none;
+    /* 用 ink-3 而不是 rule：rule 在深色底上只有 1.37 對比，看不出這是可以點的東西 */
+    border: 1px dashed var(--ink-3);
+    border-radius: 999px;
+    background: none;
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 12.5px;
+    padding: 6px 13px 6px 10px;
+    min-height: 36px;          /* 手機上要點得到 */
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: border-color .14s, color .14s, background .14s;
+  }
+  .chip::before {
+    content: "+";
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--ink-3);
+    line-height: 1;
+  }
+  .chip:hover { border-color: var(--gain); color: var(--ink); background: var(--gain-bg); }
+  .chip:hover::before { color: var(--gain); }
+  .chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .cost-rows { display: flex; flex-direction: column; gap: 6px; }
+  .cost-rows:not(:empty) { margin-top: 10px; }
+  .cost-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px 7px 11px;
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--gain);
+    border-radius: 5px;
+    background: var(--surface-2);
+  }
+  .cost-row .cr-name { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+  .cost-row .cr-name b { font-size: 13px; font-weight: 650; }
+  /* 手機沒有 hover 看不到 title，說明一律讓它換行顯示完整，不要截斷 */
+  .cost-row .cr-name span {
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: var(--ink-2);
+  }
+  .cost-row .cr-money {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--surface);
+    overflow: hidden;
+    width: 118px;
+  }
+  .cost-row .cr-money:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
+  .cost-row .cr-money input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    padding: 6px 6px 6px 8px;
+    outline: none;
+  }
+  .cost-row .cr-money .u {
+    display: flex;
+    align-items: center;
+    padding: 0 7px;
+    background: var(--rule-soft);
+    border-left: 1px solid var(--rule);
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+  .cr-del {
+    appearance: none;
+    border: 0;
+    background: none;
+    color: var(--ink-2);
+    font-family: var(--mono);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 4px;
+    /* 手機上要點得到，別做成 24px 的小叉叉 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+  }
+  .cr-del:hover { color: var(--loss); background: var(--tax-bg); }
+  .cr-del:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+  .cost-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 9px;
+    padding-top: 9px;
+    border-top: 1px solid var(--rule);
+    font-size: 12.5px;
+    color: var(--ink-2);
+  }
+  .cost-total b {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--gain);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 賣出端跟買進端都能減稅，維持同一套灰框；只有「不能抵稅」那組換色。 */
+  .cost-total.sell b { color: var(--gain); }
+
+  /* 不能抵稅那一組：整組換成警示色。只靠 dashed/dotted 的差別看不出來，
+     會讓人誤以為這些也能抵稅，所以邊框直接換色。 */
+  .chip.nd { border-style: dotted; border-color: var(--tax); }
+  .chip.nd::before { content: "+"; color: var(--tax); }
+  .chip.nd:hover { border-color: var(--tax); background: var(--tax-bg); }
+  .chip.nd:hover::before { color: var(--tax); }
+  .cost-row.nd { border-left-color: var(--tax); }
+  .cost-total.nd b { color: var(--tax); }
+
+  /* ── 持有期間徽章 ─────────────────────────────────────── */
+  .hold {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 12px 13px;
+    background: var(--surface-2);
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .hold-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .hold-len { font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .rate-chip {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: var(--tax-bg);
+    color: var(--tax);
+    border: 1px solid color-mix(in srgb, var(--tax) 32%, transparent);
+    white-space: nowrap;
+  }
+  .countdown {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    border-top: 1px dashed var(--rule);
+    padding-top: 7px;
+  }
+  .countdown b { color: var(--gain); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .countdown .big { color: var(--brand); }
+
+  /* ── 結論卡 ───────────────────────────────────────────── */
+  .headline {
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px 20px;
+  }
+  .headline-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .big-num {
+    font-family: var(--mono);
+    font-size: clamp(34px, 6vw, 52px);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.025em;
+    line-height: 1.05;
+    color: var(--brand);
+    word-break: break-all;
+  }
+  .big-num.neg { color: var(--loss); }
+  .big-num .u { font-size: .42em; font-weight: 600; letter-spacing: 0; margin-left: 5px; color: var(--ink-2); }
+  .headline-side {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    text-align: right;
+    font-size: 13px;
+    color: var(--ink-2);
+  }
+  .headline-side .v { font-family: var(--mono); font-size: 18px; font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+
+  /* ── 逐項計算單 ───────────────────────────────────────── */
+  .ledger { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .ledger th, .ledger td { padding: 9px 24px; text-align: left; }
+  .ledger td.n {
+    text-align: right;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    font-size: 14.5px;
+  }
+  .ledger tr.sep td { border-top: 1px solid var(--rule); }
+  .ledger tr.sub td { color: var(--ink-2); }
+  .ledger tr.sub td:first-child { padding-left: 38px; position: relative; }
+  .ledger tr.sub td:first-child::before {
+    content: "−";
+    position: absolute;
+    left: 24px;
+    color: var(--ink-3);
+    font-family: var(--mono);
+  }
+  .ledger tr.total td {
+    border-top: 1px solid var(--ink);
+    font-weight: 700;
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+  .ledger tr.total.dbl td { border-top: 3px double var(--ink); }
+  .ledger tr.tax-row td { color: var(--tax); font-weight: 650; }
+  .ledger tr.tax-row td.n { font-size: 15.5px; }
+  .ledger .note { display: block; font-size: 11.5px; color: var(--ink-3); font-weight: 400; margin-top: 1px; }
+  .ledger tbody tr:hover td { background: var(--surface-2); }
+  .ledger-wrap { overflow-x: auto; padding: 8px 0 16px; }
+
+  .zero-note {
+    margin: 0 24px 18px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--gain);
+    background: var(--gain-bg);
+    font-size: 12.5px;
+    color: var(--ink-2);
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* ── 比較表 ───────────────────────────────────────────── */
+  .compare-wrap { overflow-x: auto; }
+  .compare { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 520px; }
+  .compare th {
+    text-align: right;
+    font-weight: 650;
+    font-size: 11px;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    font-family: var(--mono);
+    color: var(--ink-3);
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  .compare th:first-child { text-align: left; }
+  .compare td {
+    padding: 11px 18px;
+    border-bottom: 1px solid var(--rule-soft);
+    text-align: right;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .compare td:first-child {
+    text-align: left;
+    font-family: var(--sans);
+    font-variant-numeric: normal;
+  }
+  .compare tr.here td { background: var(--tax-bg); }
+  .compare tr.here td:first-child { font-weight: 700; box-shadow: inset 3px 0 0 var(--brand); }
+  .compare .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .06em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--brand);
+    color: var(--brand-ink);
+    margin-left: 7px;
+    vertical-align: 1px;
+  }
+  .compare .delta { font-size: 12px; color: var(--gain); }
+  .compare tr:last-child td { border-bottom: 0; }
+
+  /* ── 提示條 ───────────────────────────────────────────── */
+  .tips { display: flex; flex-direction: column; gap: 0; }
+  .tip {
+    display: flex;
+    gap: 12px;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--rule-soft);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-2);
+  }
+  .tip:last-child { border-bottom: 0; }
+  .tip .k {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .06em;
+    color: var(--ink-3);
+    flex: none;
+    width: 62px;
+    padding-top: 2px;
+    text-transform: uppercase;
+  }
+  .tip b { color: var(--ink); font-weight: 650; }
+
+  .stack { display: flex; flex-direction: column; gap: 22px; }
+
+  /* ── 頁尾 ─────────────────────────────────────────────── */
+  footer {
+    margin-top: 34px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-size: 12px;
+    color: var(--ink-2);
+    line-height: 1.65;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  footer b { color: var(--ink); }
+  footer .srcs { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  footer a { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+  footer a:hover { color: var(--brand); }
+  footer a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+
+  .hide { display: none !important; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 20px 14px 56px; }
+    .ledger th, .ledger td { padding-left: 14px; padding-right: 14px; }
+    .ledger tr.sub td:first-child { padding-left: 26px; }
+    .ledger tr.sub td:first-child::before { left: 14px; }
+    .headline { padding: 18px 16px; }
+    .zero-note { margin-left: 16px; margin-right: 16px; }
+    .modes { grid-template-columns: 1fr; }
+    .mode-btn { border-left: 0; border-top: 1px solid var(--rule); }
+    .mode-btn:first-child { border-top: 0; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div>
+      <h1>房地合一稅試算<span class="amp">．</span>賣屋淨利與開價反推</h1>
+      <p class="sub">兩種算法：輸入買價與賣價，算出稅金和實拿多少；或反過來，設定想淨賺的金額，反推賣價要開多少。依房地合一稅 2.0（民國 105 年 1 月 1 日以後取得之房地）。</p>
+    </div>
+    <div class="stamp">房地合一 2.0<br>核算表</div>
+  </header>
+
+  <div class="modes" role="tablist" aria-label="計算模式">
+    <button class="mode-btn" id="tab-forward" role="tab" aria-selected="true" aria-controls="panel" type="button">
+      算獲利
+      <small>已知買價、賣價 → 稅金與實拿</small>
+    </button>
+    <button class="mode-btn" id="tab-reverse" role="tab" aria-selected="false" aria-controls="panel" type="button">
+      反推賣價
+      <small>設定目標淨利 → 該開多少</small>
+    </button>
+  </div>
+
+  <div class="layout" id="panel">
+
+    <!-- ══ 左：輸入 ══ -->
+    <form class="card" id="form" autocomplete="off">
+      <div class="card-head"><h2>輸入條件</h2></div>
+      <div class="card-body">
+
+        <div class="field">
+          <label for="buy">買入價格 <span class="hint">當初的成交總價</span></label>
+          <div class="money">
+            <input type="number" id="buy" value="698" min="0" step="1" inputmode="decimal">
+            <span class="unit">萬元</span>
+          </div>
+        </div>
+
+        <div class="field" id="f-sell">
+          <label for="sell">賣出價格 <span class="hint">這次的成交總價</span></label>
+          <div class="money">
+            <input type="number" id="sell" value="838" min="0" step="1" inputmode="decimal">
+            <span class="unit">萬元</span>
+          </div>
+        </div>
+
+        <div class="field hide" id="f-target">
+          <label for="target">目標淨獲利 <span class="hint">扣掉所有稅費後想實拿</span></label>
+          <div class="money">
+            <input type="number" id="target" value="50" step="1" inputmode="decimal">
+            <span class="unit">萬元</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>可認列的成本 <span class="hint">點一下加進來，預設都不算</span></label>
+          <div class="cost-chips" id="cost-chips"></div>
+          <div class="cost-rows" id="cost-rows"></div>
+          <div class="cost-total hide" id="cost-total"></div>
+          <span class="hint">買進時付的錢，加上後來的裝潢改良，都能墊高取得成本、直接少繳稅。<b>每一項都要有單據</b>，國稅局才認。</span>
+        </div>
+
+        <div class="field">
+          <label>賣出時的費用 <span class="hint">點一下加進來，預設都不算</span></label>
+          <div id="sell-real">
+            <div class="cost-chips sell" id="sell-chips"></div>
+            <div class="cost-rows sell" id="sell-rows"></div>
+            <div class="cost-total sell hide" id="sell-total"></div>
+          </div>
+          <label class="check" style="margin-top:10px">
+            <input type="checkbox" id="est-fee">
+            <span class="check-text">
+              <b>沒有單據 → 用推計</b>
+              <span>國稅局按成交價 3% 認列，最高 30 萬。有仲介費收據時通常核實認列比較划算，別勾。</span>
+            </span>
+          </label>
+          <span class="hint">這次賣出付掉的錢，可以從成交價減除。<b>服務費與履保費是比例</b>，反推賣價時會跟著成交價一起變。</span>
+        </div>
+
+        <div class="field">
+          <label>不能抵稅的持有成本 <span class="hint">花了錢，但國稅局不認</span></label>
+          <div class="cost-chips nd" id="nd-chips"></div>
+          <div class="cost-rows nd" id="nd-rows"></div>
+          <div class="cost-total nd hide" id="nd-total"></div>
+          <span class="hint">這些屬於「使用期間的相對代價」，<b>一律不能從成交價減除</b>。加在這裡不會改變稅額，只另外算出實際賺多少。</span>
+        </div>
+
+        <div class="field">
+          <label>持有期間 <span class="hint">直接點，或用日期精算</span></label>
+          <div class="rate-picker" id="rate-picker" role="group" aria-label="持有期間與適用稅率"></div>
+          <div class="picker-switch">
+            <button type="button" class="linkbtn" id="switch-mode">改用取得日期精算 →</button>
+          </div>
+          <div class="override-note hide" id="override-note"></div>
+        </div>
+
+        <div class="field hide" id="f-dates">
+          <label>取得日期 ／ 出售日期 <span class="hint">算得出還差幾天跳級距</span></label>
+          <div class="row-2">
+            <input type="date" id="d-acq" value="2022-03-15" aria-label="取得日期">
+            <input type="date" id="d-sell" value="2026-08-21" aria-label="出售日期">
+          </div>
+        </div>
+
+        <div class="hold" id="hold">
+          <div class="hold-top">
+            <span class="hold-len" id="hold-len">—</span>
+            <span class="rate-chip" id="rate-chip">—</span>
+          </div>
+          <div class="countdown" id="countdown"></div>
+        </div>
+
+        <div class="field">
+          <label for="identity">賣方身分</label>
+          <select id="identity">
+            <option value="resident">境內居住之個人（一般情形）</option>
+            <option value="company">境內營利事業（公司）</option>
+            <option value="nonresident">非境內居住之個人（外僑／久居國外）</option>
+          </select>
+        </div>
+
+        <div class="checks">
+          <label class="check">
+            <input type="checkbox" id="selfuse">
+            <span class="check-text">
+              <b>適用自住優惠（設籍滿 6 年）</b>
+              <span>本人／配偶／未成年子女設籍、持有並實際居住連續滿 6 年，前 6 年未出租或營業，且 6 年內沒用過這項優惠。所得 400 萬免稅，超過部分課 10%。</span>
+            </span>
+          </label>
+          <label class="check">
+            <input type="checkbox" id="involuntary">
+            <span class="check-text">
+              <b>非自願因素出售（持有 5 年內適用 20%）</b>
+              <span>調職、非自願離職、房地遭強制執行等財政部公告情形；自有土地與建商合建分回後 2 年內出售、參與都更分回也適用。</span>
+            </span>
+          </label>
+        </div>
+
+        <details class="adv">
+          <summary>土地相關項目（有土增稅單再展開填，不確定就留 0）</summary>
+          <div class="adv-body">
+
+            <div class="field">
+              <label for="lvi">土地漲價總數額 <span class="hint">稅務扣除項</span></label>
+              <div class="money">
+                <input type="number" id="lvi" value="0" min="0" step="1" inputmode="decimal">
+                <span class="unit">萬元</span>
+              </div>
+              <span class="hint">土增稅單上的「漲價總數額」。可從課稅所得中扣掉，上限為「交易當年度公告土地現值 − 前次移轉現值」。不確定就留 0，稅會算得保守偏高。</span>
+            </div>
+
+            <div class="field">
+              <label for="land-tax">應繳土地增值稅 <span class="hint">實付現金</span></label>
+              <div class="money">
+                <input type="number" id="land-tax" value="0" min="0" step="1" inputmode="decimal">
+                <span class="unit">萬元</span>
+              </div>
+              <span class="hint">土增稅本身不能列成房地合一稅的成本，但它是賣方真的要付的錢，會從實拿金額扣掉。</span>
+            </div>
+
+          </div>
+        </details>
+
+      </div>
+    </form>
+
+    <!-- ══ 右：結果 ══ -->
+    <div class="stack">
+
+      <section class="card">
+        <div class="headline">
+          <div class="headline-main">
+            <span class="eyebrow" id="head-label">扣除所有稅費後，賣方實拿</span>
+            <span class="big-num" id="head-num">—</span>
+          </div>
+          <div class="headline-side" id="head-side"></div>
+        </div>
+
+        <div class="ledger-wrap">
+          <table class="ledger">
+            <tbody id="ledger"></tbody>
+          </table>
+        </div>
+
+        <div class="zero-note hide" id="zero-note"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2 id="cmp-title">同一組數字，賣在不同持有期間</h2>
+        </div>
+        <div class="compare-wrap">
+          <table class="compare">
+            <thead id="cmp-head"></thead>
+            <tbody id="cmp-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>報稅提醒</h2></div>
+        <div class="tips">
+          <div class="tip">
+            <span class="k">申報期限</span>
+            <span>完成所有權移轉登記日的<b>次日起 30 天內</b>要申報，<b>賠錢賣也一樣要申報</b>，逾期會被罰。不是等隔年五月併綜所稅報。</span>
+          </div>
+          <div class="tip">
+            <span class="k">重購退稅</span>
+            <span>賣掉自住房後<b>兩年內</b>重購自用住宅（或先買後賣，一樣兩年內），可申請退稅：買貴的全額退，買便宜的按比例退。<b>可以和 400 萬免稅額併用</b>。但新屋 5 年內不得改作他用或再轉售，否則要追繳。</span>
+          </div>
+          <div class="tip">
+            <span class="k">不能扣的</span>
+            <span>持有期間繳的<b>房屋稅、地價稅、管理費、房貸利息</b>都不能列費用，那是使用期間的代價。土增稅也不能列成本（已改用土地漲價總數額扣除）。</span>
+          </div>
+          <div class="tip">
+            <span class="k">持有期間</span>
+            <span><b>繼承或受遺贈</b>取得的房地，可以把<b>被繼承人的持有期間合併計算</b>，常常一併算下來就跳到 20% 或 15% 級距。夫妻間贈與的也可以合併計算。</span>
+          </div>
+          <div class="tip">
+            <span class="k">單據</span>
+            <span>買進時的<b>契稅、代書費、規費、仲介費收據</b>要留著，這些能墊高取得成本、直接少繳稅。找不到單據，這一整塊就算不進去。</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <footer>
+    <div><b>試算工具，不等於國稅局核定金額。</b>本表依所得稅法第 14 條之 4、第 24 條之 5 及財政部房地合一稅 2.0 規定計算，供估算與洽談參考。實際課稅所得會受土地漲價總數額、單據認列、重購退稅、繼承持有期間併計等因素影響，正式申報請以國稅局核定為準，或洽地政士、會計師。</div>
+    <div><b>適用範圍：</b>民國 105 年 1 月 1 日以後取得的房地。105 年以前取得且非屬 2.0 範圍者適用舊制（財產交易所得），不能用這張表。</div>
+    <div class="srcs">
+      <span>法規依據：</span>
+      <a href="https://www.mof.gov.tw/houseandland/multiplehtml/de144e74630c4ac59f2d84a068c889c9" target="_blank" rel="noopener">財政部｜稅制設計－個人</a>
+      <a href="https://www.mof.gov.tw/houseandland/multiplehtml/2eb65bb3ad0e4a968412636bdc6d3eb1" target="_blank" rel="noopener">財政部｜稅制設計－營利事業</a>
+      <a href="https://www.etax.nat.gov.tw/etwmain/alien-tax-service/alien-tax-faq/E8nlpLa" target="_blank" rel="noopener">稅務入口網｜可減除費用</a>
+      <a href="https://www.dot.gov.tw/singlehtml/ch26?cntId=22faeff7754c4e719eea4c644a71daee" target="_blank" rel="noopener">賦稅署｜非自願因素公告</a>
+      <a href="https://download.tax.nat.gov.tw/irn/IRN2_QA.pdf" target="_blank" rel="noopener">房地合一稅 2.0 常見問答</a>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var W = 10000;                 // 1 萬元
+  var SELF_USE_FREE = 4000000;   // 自住免稅額 400 萬
+  var SELF_USE_RATE = 0.10;
+  var EST_RATE = 0.03;           // 未提示證明：成交價 3%
+  var EST_CAP  = 300000;         // 上限 30 萬
+  var INVOL_RATE = 0.20;
+
+  // 稅率級距：threshold = 持有滿幾年才進入這一級
+  var BRACKETS = {
+    resident: [
+      { from: 0,  rate: 0.45, name: "持有未滿 2 年",         short: "未滿 2 年" },
+      { from: 2,  rate: 0.35, name: "持有滿 2 年～未滿 5 年",  short: "2 ~ 5 年" },
+      { from: 5,  rate: 0.20, name: "持有滿 5 年～未滿 10 年", short: "5 ~ 10 年" },
+      { from: 10, rate: 0.15, name: "持有滿 10 年以上",       short: "10 年以上" }
+    ],
+    company: [
+      { from: 0, rate: 0.45, name: "持有未滿 2 年",        short: "未滿 2 年" },
+      { from: 2, rate: 0.35, name: "持有滿 2 年～未滿 5 年", short: "2 ~ 5 年" },
+      { from: 5, rate: 0.20, name: "持有滿 5 年以上",       short: "5 年以上" }
+    ],
+    nonresident: [
+      { from: 0, rate: 0.45, name: "持有未滿 2 年",   short: "未滿 2 年" },
+      { from: 2, rate: 0.35, name: "持有滿 2 年以上", short: "2 年以上" }
+    ]
+  };
+
+  // 可認列的取得成本項目。auto 有值的會在加入時自動帶入試算金額（使用者改過就不再覆蓋）。
+  var COST_ITEMS = [
+    { key: "agent",  label: "服務費",    note: "買進時付的仲介服務費，先抓買價 2%",
+      auto: function (buy) { return buy * 0.02; } },
+    { key: "deco",   label: "裝潢費",    note: "要有統一發票或收據才認列" },
+    { key: "deed",   label: "契稅",      note: "房屋評定現值 × 6%，看契稅單填" },
+    { key: "scriv",  label: "代書費",    note: "買進時的地政士費用，先抓 1.5 萬",
+      auto: function () { return 15000; } },
+    { key: "improve",label: "修繕改良",  note: "增置、改良、修繕支出" },
+    { key: "stamp",  label: "印花稅",    note: "契約金額 × 0.1%",
+      auto: function (buy) { return buy * 0.001; } },
+    { key: "reg",    label: "登記規費",  note: "地政規費，先抓買價 0.1%",
+      auto: function (buy) { return buy * 0.001; } },
+    { key: "other",  label: "其他",      note: "其他可認列的取得成本" }
+  ];
+  // 賣出時付的費用，可自成交價減除。
+  // rate:true 的存「百分比」而不是金額——反推賣價時成交價是未知數，服務費必須跟著它一起變，
+  // 存成固定金額會讓反推的答案偏掉。
+  var SELL_ITEMS = [
+    { key: "sagent", label: "服務費",     note: "賣方付的仲介服務費", rate: true, auto: 4 },
+    { key: "sscriv", label: "代書費",     note: "簽約與過戶的地政士費用",      auto: 15000 },
+    { key: "escrow", label: "履約保證費", note: "履約保證，買賣雙方各付一半",  rate: true, auto: 0.03 },
+    { key: "smove",  label: "搬遷清潔",   note: "搬家、清運、整理費用" },
+    { key: "sother", label: "其他",       note: "廣告費、印花稅等賣出時支出" }
+  ];
+
+  // 不能抵稅的持有成本：所得稅法規定，取得所有權後繳的房屋稅、地價稅、管理費、
+  // 借款利息屬「使用期間的相對代價」，不得自成交價額減除。加了不影響稅額，只影響實際損益。
+  var ND_ITEMS = [
+    { key: "housetax", label: "房屋稅",   note: "持有期間每年繳的房屋稅" },
+    { key: "landtax",  label: "地價稅",   note: "持有期間每年繳的地價稅" },
+    { key: "mgmt",     label: "管理費",   note: "社區管理費，放越久累積越可觀" },
+    { key: "interest", label: "房貸利息", note: "銀行借款利息，不是本金" },
+    { key: "ndother",  label: "其他",     note: "水電、保險等持有期間支出" }
+  ];
+
+  // 預設全部不計入，點按鈕才加進來
+  var costState = {};
+  COST_ITEMS.forEach(function (it) { costState[it.key] = { on: false, value: 0, touched: false }; });
+  var sellState = {};
+  SELL_ITEMS.forEach(function (it) { sellState[it.key] = { on: false, value: 0, touched: false }; });
+  var ndState = {};
+  ND_ITEMS.forEach(function (it) { ndState[it.key] = { on: false, value: 0, touched: false }; });
+
+  var $ = function (id) { return document.getElementById(id); };
+  var mode = "forward";     // forward = 算獲利 ／ reverse = 反推賣價
+  var rateMode = "quick";   // quick = 直接點級距 ／ date = 用日期精算
+  var quickIdx = 1;         // quick 模式選中的級距
+
+  /* ── 格式化 ─────────────────────────────────────────── */
+  function fmtWan(v, dp) {
+    var w = v / W;
+    var d = (dp === undefined) ? (Math.abs(w) < 100 ? 1 : 0) : dp;
+    var s = Math.abs(w).toFixed(d);
+    var parts = s.split(".");
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return (w < 0 ? "−" : "") + parts.join(".");
+  }
+  function signWan(v) { return (v < 0 ? "−" : "") + fmtWan(Math.abs(v)); }
+  function pct(r) { return (r * 100).toFixed(r * 100 % 1 === 0 ? 0 : 1) + "%"; }
+  function num(id) { var v = parseFloat($(id).value); return isFinite(v) ? v : 0; }
+
+  /* ── 持有期間：用日曆日算，不用天數換算 ─────────────── */
+  // 一律以「本地午夜」解析。直接 new Date("2024-02-29") 會被當成 UTC 午夜，
+  // 在負時區（如美東）會整個差一天，海外客戶開這頁就會看到錯的持有期間。
+  function parseDate(s) {
+    var p = String(s || "").split("-");
+    if (p.length !== 3) return null;
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function addYears(d, y) {
+    var n = new Date(d.getTime());
+    var day = n.getDate();
+    n.setFullYear(n.getFullYear() + y);
+    if (n.getDate() !== day) n.setDate(0); // 2/29 → 2/28
+    return n;
+  }
+  function holdInfo(acq, sell, identity) {
+    var list = BRACKETS[identity];
+    var idx = 0;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].from === 0 || sell.getTime() >= addYears(acq, list[i].from).getTime()) idx = i;
+    }
+    var next = (idx + 1 < list.length) ? list[idx + 1] : null;
+    var nextDate = next ? addYears(acq, next.from) : null;
+    var days = nextDate ? Math.round((nextDate.getTime() - sell.getTime()) / 86400000) : null;
+
+    // 已持有多久
+    var years = sell.getFullYear() - acq.getFullYear();
+    var anniv = addYears(acq, years);
+    if (anniv.getTime() > sell.getTime()) { years -= 1; anniv = addYears(acq, years); }
+    var months = 0;
+    var probe = new Date(anniv.getTime());
+    while (months < 11) {
+      var p = new Date(anniv.getTime());
+      p.setMonth(p.getMonth() + months + 1);
+      if (p.getTime() > sell.getTime()) break;
+      months++;
+      probe = p;
+    }
+    var extraDays = Math.max(0, Math.floor((sell.getTime() - probe.getTime()) / 86400000));
+
+    return {
+      bracket: list[idx],
+      index: idx,
+      next: next,
+      nextDate: nextDate,
+      daysToNext: days,
+      years: Math.max(0, years),
+      months: months,
+      days: extraDays,
+      valid: sell.getTime() >= acq.getTime()
+    };
+  }
+  function fmtDate(d) {
+    return d.getFullYear() + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + ("0" + d.getDate()).slice(-2);
+  }
+
+  /* ── 兩組成本共用同一套邏輯，用 group 描述差異 ─────────── */
+  var GROUPS = {
+    cost: { items: COST_ITEMS, state: costState, prefix: "cost-in-",
+            chips: "cost-chips", rows: "cost-rows", total: "cost-total",
+            cls: "", totalNote: "合計併入取得成本", sign: "＋" },
+    sell: { items: SELL_ITEMS, state: sellState, prefix: "sell-in-",
+            chips: "sell-chips", rows: "sell-rows", total: "sell-total",
+            cls: " sell", totalNote: "合計併入移轉費用", sign: "−" },
+    nd:   { items: ND_ITEMS,   state: ndState,   prefix: "nd-in-",
+            chips: "nd-chips",  rows: "nd-rows",  total: "nd-total",
+            cls: " nd", totalNote: "都不能抵稅", sign: "" }
+  };
+
+  function activeOf(g) {
+    return g.items.filter(function (it) { return g.state[it.key].on; });
+  }
+  function totalOf(g) {
+    return activeOf(g).reduce(function (t, it) { return t + g.state[it.key].value; }, 0);
+  }
+  function activeCosts() { return activeOf(GROUPS.cost); }
+  function costTotal()   { return totalOf(GROUPS.cost); }
+  function ndTotal()     { return totalOf(GROUPS.nd); }
+
+  // 賣出費用要當下的成交價才算得出來（比例型項目）
+  function sellFeeAt(sellPrice) {
+    return activeOf(GROUPS.sell).reduce(function (t, it) {
+      var v = sellState[it.key].value;
+      return t + (it.rate ? sellPrice * v / 100 : v);
+    }, 0);
+  }
+
+  // 只在「加入／移除項目」時重建。金額輸入時若重建 DOM，輸入框每打一個字就會失焦。
+  function renderGroupUI(g) {
+    var chips = "", rows = "";
+    g.items.forEach(function (it) {
+      var st = g.state[it.key];
+      if (st.on) {
+        // 比例型填 %、固定型填萬元，換算後的實際金額由 syncSellShown() 補在說明欄
+        var shown = it.rate ? st.value : (st.value / W).toFixed(1);
+        var unit  = it.rate ? "％" : "萬";
+        var step  = it.rate ? "0.1" : "0.5";
+        rows += "<div class=\"cost-row" + g.cls + "\">" +
+          "<span class=\"cr-name\"><b>" + it.label + "</b>" +
+            "<span" + (it.rate ? " id=\"" + g.prefix + it.key + "-note\"" : "") + ">" + it.note + "</span></span>" +
+          "<span class=\"cr-money\"><input type=\"number\" id=\"" + g.prefix + it.key + "\"" +
+            " data-key=\"" + it.key + "\" value=\"" + shown + "\"" +
+            " min=\"0\"" + (it.rate ? " max=\"20\"" : "") +
+            " step=\"" + step + "\" inputmode=\"decimal\" aria-label=\"" + it.label +
+            (it.rate ? " 佔成交價百分比" : " 金額（萬元）") + "\">" +
+            "<span class=\"u\">" + unit + "</span></span>" +
+          "<button type=\"button\" class=\"cr-del\" data-del=\"" + it.key + "\"" +
+            " aria-label=\"移除 " + it.label + "\" title=\"移除 " + it.label + "\">✕</button>" +
+          "</div>";
+      } else {
+        chips += "<button type=\"button\" class=\"chip" + g.cls + "\" data-add=\"" + it.key + "\"" +
+          " aria-label=\"加入 " + it.label + "\" title=\"" + it.note + "\">" + it.label + "</button>";
+      }
+    });
+    $(g.chips).innerHTML = chips;
+    $(g.rows).innerHTML = rows;
+  }
+  function renderCostUI() {
+    renderGroupUI(GROUPS.cost); renderGroupUI(GROUPS.sell); renderGroupUI(GROUPS.nd);
+  }
+
+  // 比例型項目：把「4% = 33.5 萬」補進說明欄。只改 span 的文字，不碰 input，才不會失焦。
+  function syncSellShown(sellPrice) {
+    activeOf(GROUPS.sell).forEach(function (it) {
+      if (!it.rate) return;
+      var el = $(GROUPS.sell.prefix + it.key + "-note");
+      if (el) el.textContent = it.note + "　＝ " + fmtWan(sellPrice * sellState[it.key].value / 100) + " 萬";
+    });
+  }
+
+  // 合計列不含輸入框，可以每次重畫
+  function renderGroupTotal(g, amount) {
+    var list = activeOf(g), el = $(g.total);
+    if (!list.length) { el.classList.add("hide"); return; }
+    el.innerHTML = "<span>已加入 " + list.length + " 項，" + g.totalNote + "</span>" +
+      "<b>" + g.sign + fmtWan(amount === undefined ? totalOf(g) : amount) + " 萬</b>";
+    el.classList.remove("hide");
+  }
+  function renderCostTotal(sellPrice) {
+    renderGroupTotal(GROUPS.cost);
+    renderGroupTotal(GROUPS.sell, sellFeeAt(sellPrice || 0));
+    renderGroupTotal(GROUPS.nd);
+  }
+
+  // 買價變動時，重算「還沒被手動改過」的自動帶入項目
+  function syncCostAuto(buy) {
+    activeCosts().forEach(function (it) {
+      if (!it.auto || costState[it.key].touched) return;
+      var v = it.auto(buy);
+      costState[it.key].value = v;
+      var el = $("cost-in-" + it.key);
+      if (el && document.activeElement !== el) el.value = (v / W).toFixed(1);
+    });
+  }
+
+  /* ── quick 模式：直接指定級距，沒有日期可算倒數 ───────── */
+  function quickHold(identity) {
+    var list = BRACKETS[identity];
+    var i = Math.min(quickIdx, list.length - 1);
+    return {
+      bracket: list[i], index: i,
+      next: (i + 1 < list.length) ? list[i + 1] : null,
+      nextDate: null, daysToNext: null,
+      years: null, months: null, days: null,
+      valid: true, quick: true
+    };
+  }
+
+  /* ── 讀表單 ─────────────────────────────────────────── */
+  function readInput() {
+    var acq = parseDate($("d-acq").value) || new Date(2000, 0, 1);
+    var sel = parseDate($("d-sell").value) || new Date(2000, 0, 1);
+    var identity = $("identity").value;
+    return {
+      buy: num("buy") * W,
+      sell: num("sell") * W,
+      target: num("target") * W,
+      acqExtra: costTotal(),
+      costList: activeCosts(),
+      feeAt: sellFeeAt,
+      lvi: num("lvi") * W,
+      landTax: num("land-tax") * W,
+      estFee: $("est-fee").checked,
+      selfUse: $("selfuse").checked,
+      involuntary: $("involuntary").checked,
+      identity: identity,
+      hold: (rateMode === "date") ? holdInfo(acq, sel, identity) : quickHold(identity)
+    };
+  }
+
+  /* ── 核心：給定成交價，算出稅與淨利 ─────────────────── */
+  function compute(inp, sellPrice, forceRate) {
+    var transferFee = inp.estFee
+      ? Math.min(sellPrice * EST_RATE, EST_CAP)
+      : inp.feeAt(sellPrice);
+
+    var cost = inp.buy + inp.acqExtra;
+    var lviUsed = Math.min(inp.lvi, Math.max(0, sellPrice - cost - transferFee));
+    var taxable = sellPrice - cost - transferFee - inp.lvi;
+
+    var rate, rateName, tax, freeUsed = 0;
+
+    if (forceRate && forceRate.selfUse) {
+      rate = SELF_USE_RATE;
+      rateName = "自住優惠 10%";
+      freeUsed = Math.min(Math.max(0, taxable), SELF_USE_FREE);
+      tax = Math.max(0, taxable - SELF_USE_FREE) * SELF_USE_RATE;
+    } else if (forceRate) {
+      rate = forceRate.rate;
+      rateName = forceRate.name;
+      tax = Math.max(0, taxable) * rate;
+    } else if (inp.selfUse) {
+      rate = SELF_USE_RATE;
+      rateName = "自住優惠 10%（400 萬免稅）";
+      freeUsed = Math.min(Math.max(0, taxable), SELF_USE_FREE);
+      tax = Math.max(0, taxable - SELF_USE_FREE) * SELF_USE_RATE;
+    } else if (inp.involuntary && inp.hold.index <= (inp.identity === "nonresident" ? 0 : 2) && isWithin5(inp)) {
+      rate = INVOL_RATE;
+      rateName = "非自願因素 20%";
+      tax = Math.max(0, taxable) * rate;
+    } else {
+      rate = inp.hold.bracket.rate;
+      rateName = inp.hold.bracket.name + "　" + pct(rate);
+      tax = Math.max(0, taxable) * rate;
+    }
+
+    var net = sellPrice - cost - transferFee - tax - inp.landTax;
+
+    return {
+      sellPrice: sellPrice,
+      cost: cost,
+      transferFee: transferFee,
+      taxable: taxable,
+      lviUsed: lviUsed,
+      rate: rate,
+      rateName: rateName,
+      tax: tax,
+      freeUsed: freeUsed,
+      net: net,
+      grossGain: sellPrice - cost - transferFee
+    };
+  }
+
+  function isWithin5(inp) {
+    // 非自願 20% 僅適用持有 5 年以下
+    var b = inp.hold.bracket;
+    return b.rate === 0.45 || b.rate === 0.35;
+  }
+
+  /* ── 反推：淨利對賣價單調遞增，二分法求解 ───────────── */
+  function solveSell(inp, targetNet, forceRate) {
+    var lo = 0;
+    var hi = Math.max(inp.buy * 4, inp.buy + Math.abs(targetNet) * 6 + inp.acqExtra * 4 + inp.landTax * 4, 5e8) + 1e7;
+    // 目標超出上界就擴張
+    var guard = 0;
+    while (compute(inp, hi, forceRate).net < targetNet && guard < 60) { hi *= 2; guard++; }
+    for (var i = 0; i < 160; i++) {
+      var mid = (lo + hi) / 2;
+      if (compute(inp, mid, forceRate).net < targetNet) lo = mid; else hi = mid;
+    }
+    // 進位到「萬元」：房仲報價本來就以萬為單位，而且往上進位可保證實際淨利不低於目標。
+    return Math.ceil(hi / W) * W;
+  }
+
+  /* ── 畫面 ───────────────────────────────────────────── */
+  function isOverridden(inp) {
+    return inp.selfUse || (inp.involuntary && isWithin5(inp));
+  }
+
+  function renderRateButtons(inp) {
+    var list = BRACKETS[inp.identity];
+    var over = isOverridden(inp);
+    var html = "";
+    for (var i = 0; i < list.length; i++) {
+      var on = (!over && i === inp.hold.index);
+      html += "<button type=\"button\" class=\"rate-btn" + (over ? " locked" : "") + "\"" +
+        " data-idx=\"" + i + "\" aria-pressed=\"" + (on ? "true" : "false") + "\"" +
+        " title=\"" + list[i].name + "　稅率 " + pct(list[i].rate) + "\">" +
+        "<span class=\"rb-pct\">" + pct(list[i].rate) + "</span>" +
+        "<span class=\"rb-len\">" + list[i].short + "</span>" +
+        "</button>";
+    }
+    $("rate-picker").innerHTML = html;
+
+    var note = $("override-note");
+    if (inp.selfUse) {
+      note.innerHTML = "已勾<b>自住優惠</b>，稅率固定為 400 萬免稅額 + 超過部分 10%，不看上面的持有級距。";
+      note.classList.remove("hide");
+    } else if (inp.involuntary && isWithin5(inp)) {
+      note.innerHTML = "已勾<b>非自願因素</b>，持有 5 年內固定 20%，蓋掉上面選的 " + pct(inp.hold.bracket.rate) + "。";
+      note.classList.remove("hide");
+    } else {
+      note.classList.add("hide");
+    }
+  }
+
+  // 少繳多少：同一筆交易換到下一個級距的稅差
+  function taxSaving(inp, from, to) {
+    var price = (mode === "forward") ? inp.sell : solveSell(inp, inp.target, from);
+    return compute(inp, price, from).tax - compute(inp, price, to).tax;
+  }
+
+  function renderHold(inp) {
+    var h = inp.hold;
+    var chip = pct(h.bracket.rate);
+    if (inp.selfUse) chip = "自住 10%";
+    else if (inp.involuntary && isWithin5(inp)) chip = "非自願 20%";
+    $("rate-chip").textContent = chip;
+
+    if (rateMode === "date" && !h.valid) {
+      $("hold-len").textContent = "出售日期早於取得日期";
+      $("countdown").innerHTML = "請確認兩個日期。";
+      return;
+    }
+
+    if (rateMode === "quick") {
+      $("hold-len").textContent = h.bracket.name;
+    } else {
+      var len = h.years + " 年 " + h.months + " 個月";
+      if (h.years === 0 && h.months === 0) len = h.days + " 天";
+      $("hold-len").textContent = "已持有 " + len;
+    }
+
+    var html = "";
+    if (inp.selfUse) {
+      html = "適用 <b>400 萬免稅額 + 超過部分 10%</b>，不受持有級距影響（但仍須設籍並居住滿 6 年）。";
+    } else if (inp.involuntary && isWithin5(inp)) {
+      html = "非自願因素持有 5 年內按 <b>20%</b> 課徵，優於原本的 " + pct(h.bracket.rate) + "。";
+    } else if (!h.next) {
+      html = "已在最低稅率級距 <b>" + pct(h.bracket.rate) + "</b>，再放也不會更低。";
+    } else if (rateMode === "quick") {
+      var s1 = taxSaving(inp, h.bracket, h.next);
+      html = "撐到 <b>" + h.next.short + "</b> 稅率降到 " + pct(h.next.rate);
+      if (s1 > 0) html += "，這筆可以少繳 <b>" + fmtWan(s1) + " 萬</b>";
+      html += "。<button type=\"button\" class=\"linkbtn\" id=\"inline-date\">用日期算還差幾天</button>";
+    } else if (h.daysToNext !== null && h.daysToNext > 0) {
+      var s2 = taxSaving(inp, h.bracket, h.next);
+      html = "再撐 <b class=\"big\">" + h.daysToNext.toLocaleString("en-US") + " 天</b>（到 <b>" + fmtDate(h.nextDate) + "</b>）稅率就降到 " + pct(h.next.rate);
+      if (s2 > 0) html += "，這筆可以少繳 <b>" + fmtWan(s2) + " 萬</b>";
+      html += "。";
+    } else {
+      html = "已滿足 " + h.bracket.name + "，適用 <b>" + pct(h.bracket.rate) + "</b>。";
+    }
+    $("countdown").innerHTML = html;
+
+    var inline = $("inline-date");
+    if (inline) inline.addEventListener("click", function () { setRateMode("date"); });
+  }
+
+  function row(label, note, value, cls) {
+    return "<tr class=\"" + (cls || "") + "\"><td>" + label +
+      (note ? "<span class=\"note\">" + note + "</span>" : "") +
+      "</td><td class=\"n\">" + value + "</td></tr>";
+  }
+
+  function renderLedger(inp, r) {
+    var sellList = activeOf(GROUPS.sell);
+    var feeNote = inp.estFee
+      ? "未提示單據，按成交價 3% 推計（上限 30 萬）"
+      : (sellList.length
+          ? sellList.map(function (it) {
+              var v = sellState[it.key].value;
+              return it.rate
+                ? it.label + " " + v + "%　" + fmtWan(r.sellPrice * v / 100)
+                : it.label + " " + fmtWan(v);
+            }).join("、")
+          : "<b>還沒加計任何賣出費用</b>，稅會算得偏高");
+
+    var h = "";
+    h += row("成交價額", mode === "reverse" ? "反推結果" : null, signWan(r.sellPrice), "total");
+    var costNote = "買入價 " + fmtWan(inp.buy) + " 萬";
+    if (inp.costList.length) {
+      costNote += "　＋　" + inp.costList.map(function (it) {
+        return it.label + " " + fmtWan(costState[it.key].value);
+      }).join("、");
+    } else {
+      costNote += "　（還沒加計任何取得費用，稅會算得偏高）";
+    }
+    h += row("取得成本", costNote, signWan(inp.buy + inp.acqExtra), "sub");
+    h += row("移轉費用", feeNote, signWan(r.transferFee), "sub");
+    h += row("土地漲價總數額", inp.lvi > 0 ? "已課徵土增稅的部分，不重複課稅" : "未填，稅額算得較保守", signWan(inp.lvi), "sub");
+    h += row("<b>課稅所得</b>", null, "<b>" + signWan(r.taxable) + "</b>", "total");
+
+    if (inp.selfUse) {
+      h += row("自住免稅額", "設籍滿 6 年，400 萬以內免稅", signWan(-r.freeUsed), "sub");
+      h += row("<b>應稅所得</b>", null, "<b>" + signWan(Math.max(0, r.taxable - SELF_USE_FREE)) + "</b>", "");
+    }
+
+    h += row("<b>房地合一所得稅</b>", r.rateName, "<b>" + signWan(r.tax) + "</b>", "tax-row total");
+
+    if (inp.landTax > 0) {
+      h += row("土地增值稅", "另計，不能列為房地合一稅的成本", signWan(inp.landTax), "sub");
+    }
+    h += row("<b>淨獲利　賣方實拿</b>",
+      mode === "reverse" ? "開這個價實際會拿到，已達標" : "成交價扣掉成本、費用、兩種稅之後",
+      "<b>" + signWan(r.net) + "</b>", "total dbl");
+
+    // 不能抵稅的持有成本：完全不進上面的稅務計算，只在這裡另外結算一次
+    var ndList = activeOf(GROUPS.nd), nd = ndTotal();
+    if (ndList.length) {
+      h += row("持有期間支出", "<b>不能抵稅</b>　" + ndList.map(function (it) {
+        return it.label + " " + fmtWan(ndState[it.key].value);
+      }).join("、"), signWan(nd), "sub tax-row");
+      h += row("<b>實際損益</b>", "連同持有期間的稅費一起算，才是這筆投資真正賺賠",
+        "<b>" + signWan(r.net - nd) + "</b>", "total");
+    }
+
+    $("ledger").innerHTML = h;
+  }
+
+  function renderHead(inp, r) {
+    var big = $("head-num");
+    if (mode === "forward") {
+      $("head-label").textContent = r.net >= 0 ? "扣除所有稅費後，賣方實拿" : "扣除所有稅費後，賣方倒賠";
+      big.innerHTML = signWan(r.net) + "<span class=\"u\">萬元</span>";
+      big.className = "big-num" + (r.net < 0 ? " neg" : "");
+      var roi = (inp.buy + inp.acqExtra) > 0 ? (r.net / (inp.buy + inp.acqExtra) * 100) : 0;
+      $("head-side").innerHTML =
+        "<div>稅費合計 <span class=\"v\">" + fmtWan(r.transferFee + r.tax + inp.landTax) + "</span> 萬</div>" +
+        "<div>投報率 <span class=\"v\">" + (roi >= 0 ? "" : "−") + Math.abs(roi).toFixed(1) + "%</span></div>";
+    } else {
+      $("head-label").textContent = "要淨賺 " + fmtWan(inp.target) + " 萬，成交價至少要";
+      big.innerHTML = fmtWan(r.sellPrice) + "<span class=\"u\">萬元</span>";
+      big.className = "big-num";
+      var need = r.sellPrice - inp.buy;
+      $("head-side").innerHTML =
+        "<div>要比買價高 <span class=\"v\">" + fmtWan(need) + "</span> 萬</div>" +
+        "<div>漲幅 <span class=\"v\">" + (inp.buy > 0 ? (need / inp.buy * 100).toFixed(1) : "0.0") + "%</span></div>";
+    }
+  }
+
+  function renderNote(inp, r) {
+    var el = $("zero-note");
+    var msg = "";
+    if (r.taxable <= 0) {
+      msg = "<b>課稅所得為負，房地合一稅 0 元。</b>賠售一樣要在移轉登記次日起 30 天內申報，損失還可以在之後 3 年內抵減其他房地交易所得。";
+    } else if (inp.selfUse && r.taxable <= SELF_USE_FREE) {
+      msg = "<b>課稅所得在 400 萬免稅額以內，房地合一稅 0 元。</b>但自住優惠 6 年只能用一次，若手上還有增值更多的房子，要想清楚用在哪一間。";
+    } else if (!inp.selfUse && inp.hold.next && inp.hold.daysToNext > 0 && inp.hold.daysToNext <= 365) {
+      msg = "<b>距離下一個稅率級距不到一年。</b>如果沒有急著用錢，把成交時間往後排到 " + fmtDate(inp.hold.nextDate) + " 之後，稅率從 " + pct(inp.hold.bracket.rate) + " 降到 " + pct(inp.hold.next.rate) + "。";
+    }
+    if (msg) { el.innerHTML = msg; el.classList.remove("hide"); }
+    else el.classList.add("hide");
+  }
+
+  function renderCompare(inp, r) {
+    var list = BRACKETS[inp.identity].slice();
+    var rows = list.map(function (b) { return { key: b, label: b.name, rate: b.rate }; });
+    rows.push({ key: { selfUse: true }, label: "自住優惠（設籍滿 6 年）", rate: SELF_USE_RATE, special: "self" });
+    rows.push({ key: { rate: INVOL_RATE, name: "非自願因素 20%" }, label: "非自願因素（持有 5 年內）", rate: INVOL_RATE, special: "invol" });
+
+    var head, body = "";
+
+    if (mode === "forward") {
+      head = "<tr><th>情境</th><th>稅率</th><th>房地合一稅</th><th>賣方實拿</th><th>與現況差額</th></tr>";
+      var base = r;
+      rows.forEach(function (x) {
+        var c = compute(inp, inp.sell, x.key);
+        var isHere =
+          (x.special === "self" && inp.selfUse) ||
+          (x.special === "invol" && !inp.selfUse && inp.involuntary && isWithin5(inp)) ||
+          (!x.special && !inp.selfUse && !(inp.involuntary && isWithin5(inp)) && x.key === inp.hold.bracket);
+        var d = c.net - base.net;
+        body += "<tr class=\"" + (isHere ? "here" : "") + "\">" +
+          "<td>" + x.label + (isHere ? "<span class=\"tag\">現況</span>" : "") + "</td>" +
+          "<td>" + (x.special === "self" ? "10%＋400萬" : pct(x.rate)) + "</td>" +
+          "<td>" + fmtWan(c.tax) + "</td>" +
+          "<td>" + signWan(c.net) + "</td>" +
+          "<td class=\"delta\">" + (isHere ? "—" : (d > 0 ? "＋" : d < 0 ? "−" : "") + fmtWan(Math.abs(d))) + "</td>" +
+          "</tr>";
+      });
+    } else {
+      head = "<tr><th>情境</th><th>稅率</th><th>成交價要開到</th><th>房地合一稅</th><th>與現況差額</th></tr>";
+      var baseS = r.sellPrice;
+      rows.forEach(function (x) {
+        var s = solveSell(inp, inp.target, x.key);
+        var c = compute(inp, s, x.key);
+        var isHere =
+          (x.special === "self" && inp.selfUse) ||
+          (x.special === "invol" && !inp.selfUse && inp.involuntary && isWithin5(inp)) ||
+          (!x.special && !inp.selfUse && !(inp.involuntary && isWithin5(inp)) && x.key === inp.hold.bracket);
+        var d = baseS - s;
+        body += "<tr class=\"" + (isHere ? "here" : "") + "\">" +
+          "<td>" + x.label + (isHere ? "<span class=\"tag\">現況</span>" : "") + "</td>" +
+          "<td>" + (x.special === "self" ? "10%＋400萬" : pct(x.rate)) + "</td>" +
+          "<td>" + fmtWan(s) + "</td>" +
+          "<td>" + fmtWan(c.tax) + "</td>" +
+          "<td class=\"delta\">" + (isHere ? "—" : (d > 0 ? "少 " : d < 0 ? "多 " : "") + fmtWan(Math.abs(d))) + "</td>" +
+          "</tr>";
+      });
+    }
+    $("cmp-head").innerHTML = head;
+    $("cmp-body").innerHTML = body;
+    $("cmp-title").textContent = mode === "forward"
+      ? "同一組數字，換到別的持有期間會差多少"
+      : "同一個目標淨利，換到別的持有期間該開多少";
+  }
+
+  /* ── 主更新 ─────────────────────────────────────────── */
+  function update() {
+    syncCostAuto(num("buy") * W);
+    var inp = readInput();
+    var r;
+    if (mode === "forward") {
+      r = compute(inp, inp.sell);
+    } else {
+      var s = solveSell(inp, inp.target);
+      r = compute(inp, s);
+    }
+    renderCostTotal(r.sellPrice);
+    syncSellShown(r.sellPrice);
+    renderRateButtons(inp);
+    renderHold(inp);
+    renderHead(inp, r);
+    renderLedger(inp, r);
+    renderNote(inp, r);
+    renderCompare(inp, r);
+  }
+
+  /* ── 事件 ───────────────────────────────────────────── */
+  function setMode(m) {
+    mode = m;
+    $("tab-forward").setAttribute("aria-selected", String(m === "forward"));
+    $("tab-reverse").setAttribute("aria-selected", String(m === "reverse"));
+    $("f-sell").classList.toggle("hide", m !== "forward");
+    $("f-target").classList.toggle("hide", m !== "reverse");
+    update();
+  }
+  $("tab-forward").addEventListener("click", function () { setMode("forward"); });
+  $("tab-reverse").addEventListener("click", function () { setMode("reverse"); });
+
+  function setRateMode(m) {
+    // 從日期模式切回快選時，把日期算出來的級距帶過去，畫面才不會跳掉
+    if (m === "quick" && rateMode === "date") {
+      var a = parseDate($("d-acq").value), s = parseDate($("d-sell").value);
+      if (a && s && s.getTime() >= a.getTime()) quickIdx = holdInfo(a, s, $("identity").value).index;
+    }
+    rateMode = m;
+    $("f-dates").classList.toggle("hide", m !== "date");
+    $("switch-mode").textContent = (m === "date") ? "← 改回直接點級距" : "改用取得日期精算 →";
+    update();
+  }
+  $("switch-mode").addEventListener("click", function () {
+    setRateMode(rateMode === "date" ? "quick" : "date");
+  });
+
+  // 兩組成本的加入／移除／改金額，行為一致
+  Object.keys(GROUPS).forEach(function (name) {
+    var g = GROUPS[name];
+
+    $(g.chips).addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("[data-add]") : null;
+      if (!b) return;
+      var k = b.getAttribute("data-add");
+      var it = g.items.filter(function (x) { return x.key === k; })[0];
+      var v = typeof it.auto === "function" ? it.auto(num("buy") * W) : (it.auto || 0);
+      g.state[k] = { on: true, touched: false, value: v };
+      renderCostUI();
+      update();
+      var el = $(g.prefix + k);
+      if (el) { el.focus(); el.select(); }   // 加進來就可以直接打金額
+    });
+
+    $(g.rows).addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("[data-del]") : null;
+      if (!b) return;
+      g.state[b.getAttribute("data-del")] = { on: false, touched: false, value: 0 };
+      renderCostUI();
+      update();
+    });
+
+    // 改金額：只更新數值與結果，不重建這一區的 DOM，才不會打字打到一半失焦
+    $(g.rows).addEventListener("input", function (e) {
+      var el = e.target, k = el.getAttribute && el.getAttribute("data-key");
+      if (!k) return;
+      e.stopPropagation();
+      var it = g.items.filter(function (x) { return x.key === k; })[0];
+      g.state[k].touched = true;
+      // 比例型存百分比原值，固定型才換算成元。
+      // 比例封在 20% 以內：反推是二分搜尋，比例逼近 100% 會讓淨利隨售價遞減、解不出來。
+      g.state[k].value = it.rate
+        ? Math.min(20, Math.max(0, parseFloat(el.value) || 0))
+        : Math.max(0, parseFloat(el.value) || 0) * W;
+      update();
+    });
+  });
+
+  $("rate-picker").addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest(".rate-btn") : null;
+    if (!btn || btn.classList.contains("locked")) return;
+    quickIdx = parseInt(btn.getAttribute("data-idx"), 10) || 0;
+    if (rateMode !== "quick") setRateMode("quick"); else update();
+  });
+
+  $("est-fee").addEventListener("change", function () {
+    $("sell-real").classList.toggle("hide", this.checked);
+  });
+  $("selfuse").addEventListener("change", function () {
+    if (this.checked) $("involuntary").checked = false;
+  });
+  $("involuntary").addEventListener("change", function () {
+    if (this.checked) $("selfuse").checked = false;
+  });
+
+  $("form").addEventListener("input", update);
+  $("form").addEventListener("change", update);
+
+  // 出售日期預設今天
+  (function () {
+    var t = new Date();
+    $("d-sell").value = t.getFullYear() + "-" + ("0" + (t.getMonth() + 1)).slice(-2) + "-" + ("0" + t.getDate()).slice(-2);
+  })();
+
+  renderCostUI();
+  update();
+})();
+</script>
+
+</body>
+</html>

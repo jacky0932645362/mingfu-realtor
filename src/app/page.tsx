@@ -34,6 +34,7 @@ import Link from "next/link";
 import { OWNER, SOCIAL, SITE_URL } from "@/config/owner";
 import { listSoldProperties, propertyTypeLabel, type PropertyRow } from "@/lib/property";
 import { directImageUrl, parseImageList } from "@/lib/media-url";
+import SiteNav from "./_components/SiteNav";
 import styles from "./home.module.css";
 
 /**
@@ -328,24 +329,11 @@ export default async function HomePage() {
     <main className={styles.page}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
 
-      <header className={styles.nav}>
-        <div className={styles.navInner}>
-          <a href="#top" className={styles.navLogo}>
-            {OWNER.name}
-            <span>・{BRAND}</span>
-          </a>
-          <nav className={styles.navLinks} aria-label="主選單">
-            <a href="#about">關於我</a>
-            <a href="#service-area">服務區域</a>
-            <a href="#achievements">我的戰績</a>
-            {hasCases ? <a href="#cases">成交案例</a> : null}
-            <a href="#testimonials">客戶評價</a>
-            <a href="#services">服務項目</a>
-            <a href="#booking">預約諮詢</a>
-          </nav>
-          <a href={`tel:${OWNER.phoneRaw}`} className={styles.navCta}>立即致電</a>
-        </div>
-      </header>
+      {/* 2026-08-24 換成全站共用導覽（原本這裡寫死一條，且六個項目全是首頁錨點）。
+          加了 /property、/sell、/tools 之後，每頁各長一條頂欄會讓客戶在站內移動時
+          看到不一樣的選單。首頁錨點只留「關於我」——其餘章節往下滾就會看到，
+          全部塞進選單反而擠爆。 */}
+      <SiteNav />
 
       {/* ---------- 1. 形象照 ---------- */}
       <section id="top" className={styles.hero}>

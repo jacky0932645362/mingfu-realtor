@@ -24,6 +24,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/card/booking`, lastModified: now, changeFrequency: "monthly", priority: 0.9 },
     // 物件列表
     { url: `${base}/property`, lastModified: now, changeFrequency: "daily", priority: 0.9 },
+    // 委託賣房 —— 收案源的落地頁，權重跟預約頁同級
+    { url: `${base}/sell`, lastModified: now, changeFrequency: "monthly", priority: 0.9 },
+    // 工具（房地合一稅試算）—— 靠搜「房地合一稅怎麼算」進來的自然流量入口
+    { url: `${base}/tools`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${base}/tools/land-tax-calculator.html`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
   ];
 
   // 每一個上架中的物件各自一條。資料庫連不上時不要讓整個 sitemap 掛掉 ——

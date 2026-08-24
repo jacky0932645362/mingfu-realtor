@@ -1,0 +1,84 @@
+/* ============================================================================
+ * 工具網站列表（2026-08-24）
+ * 區塊骨架沿用 home.module.css，這裡只放工具卡片。
+ * ========================================================================== */
+
+.hero {
+  background: var(--brand-surface);
+  color: var(--white);
+  padding: 60px 24px 52px;
+  text-align: center;
+}
+.heroInner { max-width: 760px; margin: 0 auto; }
+.heroEyebrow {
+  margin: 0 0 14px;
+  font-size: .8rem;
+  letter-spacing: .22em;
+  color: var(--brand-highlight);
+  font-weight: 700;
+}
+.heroTitle { margin: 0 0 16px; font-size: clamp(1.6rem, 4.4vw, 2.3rem); font-weight: 900; line-height: 1.5; }
+.heroSub { margin: 0; font-size: 1rem; line-height: 1.9; color: rgba(255, 255, 255, .84); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 420px));
+  justify-content: center;
+  gap: 22px;
+  text-align: left;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 26px 24px 22px;
+  border-radius: var(--radius);
+  background: var(--white);
+  border: 1px solid var(--border-soft);
+  border-top: 3px solid var(--brand-primary);
+  text-decoration: none;
+  color: inherit;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.card:hover {
+  transform: translateY(-4px);
+  border-color: var(--brand-highlight);
+  box-shadow: 0 14px 30px rgba(35, 24, 21, .14);
+}
+.cardTag {
+  align-self: flex-start;
+  margin-bottom: 12px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-primary-soft);
+  color: var(--brand-primary);
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+.cardTitle { margin: 0 0 10px; font-size: 1.18rem; font-weight: 800; }
+.cardDesc { margin: 0 0 16px; font-size: .93rem; line-height: 1.85; color: var(--muted); flex: 1; }
+.cardList { margin: 0 0 18px; padding-left: 18px; font-size: .88rem; line-height: 1.9; color: var(--muted); }
+.cardGo { font-size: .9rem; font-weight: 800; color: var(--brand-primary); }
+.cardGo::after { content: " →"; }
+
+/* 還沒做好的工具：看得到但點不下去，避免點了 404。 */
+.cardSoon {
+  opacity: .62;
+  border-top-color: var(--border-soft);
+  cursor: default;
+}
+.cardSoon:hover { transform: none; box-shadow: none; border-color: var(--border-soft); }
+.cardSoonTag { background: var(--bg-soft); color: var(--muted); }
+
+.note {
+  max-width: 720px;
+  margin: 40px auto 0;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  font-size: .87rem;
+  line-height: 1.85;
+  color: var(--muted);
+  text-align: left;
+}

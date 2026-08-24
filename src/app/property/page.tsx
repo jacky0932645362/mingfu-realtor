@@ -8,6 +8,7 @@ import {
 } from "@/lib/property";
 import { directImageUrl, parseImageList } from "@/lib/media-url";
 import { OWNER, SITE_URL } from "@/config/owner";
+import SiteNav from "../_components/SiteNav";
 import styles from "./property.module.css";
 
 export const dynamic = "force-dynamic";
@@ -35,14 +36,9 @@ export default async function PropertyListPage({
 
   return (
     <div className={styles.page}>
-      <div className={styles.topbar}>
-        <div className={styles.topbarInner}>
-          <Link href="/" className={styles.brandLink}>
-            {OWNER.brandPersona}
-          </Link>
-          <span className={styles.topbarSub}>{OWNER.title}</span>
-        </div>
-      </div>
+      {/* 2026-08-24 換成全站共用導覽。原本這裡是一條只有品牌名的簡易頂欄，
+          客戶進到物件列表後就沒有任何路徑回到委託賣房／工具，只能按上一頁。 */}
+      <SiteNav />
 
       <div className={styles.shell}>
         <div className={styles.listHead}>

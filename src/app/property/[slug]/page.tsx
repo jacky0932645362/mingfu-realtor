@@ -10,6 +10,7 @@ import {
 import { directImageUrl, parseImageList, parseVideoList } from "@/lib/media-url";
 import { OWNER, SOCIAL, SITE_URL } from "@/config/owner";
 import VideoPlayer from "../VideoPlayer";
+import SiteNav from "../../_components/SiteNav";
 import styles from "../property.module.css";
 
 export const dynamic = "force-dynamic";
@@ -127,14 +128,9 @@ export default async function PropertyPublicPage({
 
   return (
     <div className={styles.page}>
-      <div className={styles.topbar}>
-        <div className={styles.topbarInner}>
-          <Link href="/" className={styles.brandLink}>
-            {OWNER.brandPersona}
-          </Link>
-          <span className={styles.topbarSub}>{OWNER.title}</span>
-        </div>
-      </div>
+      {/* 2026-08-24 換成全站共用導覽。物件詳細頁多半是客戶從 LINE 連結直接進來的
+          第一個頁面，原本這裡只有品牌名，看完這間就沒有下一步可走。 */}
+      <SiteNav />
 
       {p.status === "reserved" ? (
         <div className={`${styles.statusBanner} ${styles.statusReserved}`}>
