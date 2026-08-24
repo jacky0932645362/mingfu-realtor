@@ -7,6 +7,7 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/config/owner";
 import { listPublicProperties } from "@/lib/property";
+import { listPublicArticles } from "@/lib/article";
 
 // 物件會上下架，sitemap 不能被靜態快取成建置當下那份
 export const dynamic = "force-dynamic";
@@ -29,22 +30,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // 工具（房地合一稅試算）—— 靠搜「房地合一稅怎麼算」進來的自然流量入口
     { url: `${base}/tools`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${base}/tools/land-tax-calculator.html`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
+    // 文章列表 —— 房產知識線的入口
+    { url: `${base}/articles`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
   ];
 
-  // 每一個上架中的物件各自一條。資料庫連不上時不要讓整個 sitemap 掛掉 ——
-  // 少幾條物件頁只是少被收錄，sitemap 整份 500 會讓 Google 連首頁都讀不到。
-  try {
-    const properties = await listPublicProperties({ limit: 200 });
-    return [
-      ...fixed,
-      ...properties.map((p) => ({
-        url: `${base}/property/${p.slug}`,
-        lastModified: p.updated_at || p.published_at || p.created_at || now,
-        changeFrequency: "weekly" as const,
-        priority: 0.8,
-      })),
-    ];
-  } catch {
-    return fixed;
-  }
+  // 物件與文章各自查，其中一個掛了不要拖累另一個 —— 少幾條頁面只是少被收錄，
+  // 整份 sitemap 500 會讓 Google 連首頁都讀不到，那才是真正的損失。
+  const [properties, articles] = await Promise.all([
+    listPublicProperties({ limit: 200 }).catch(() => []),
+    listPublicArticles({ limit: 200 }).catch(() => []),
+  ]);
+
+  return [
+    ...fixed,
+    ...properties.map((p) => ({
+      url: `${base}/property/${p.slug}`,
+      lastModified: p.updated_at || p.published_at || p.created_at || now,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    })),
+    ...articles.map((a) => ({
+      url: `${base}/articles/${a.slug}`,
+      lastModified: a.updated_at || a.published_at || a.created_at || now,
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+    })),
+  ];
 }

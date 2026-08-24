@@ -41,6 +41,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { label: "銷售物件", href: "/property" },
   { label: "委託賣房", href: "/sell" },
+  { label: "全部文章", href: "/articles" },
   { label: "工具網站", href: "/tools" },
   { label: "關於我", href: "#about" },
 ];

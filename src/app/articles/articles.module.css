@@ -1,0 +1,208 @@
+/* ============================================================================
+ * 房產知識文章：列表頁 + 文章內頁（2026-08-24）
+ * 色票來自 globals.css 的 :root，這裡不寫死色碼。
+ * ========================================================================== */
+
+.hero {
+  background: var(--brand-surface);
+  color: var(--white);
+  padding: 58px 24px 50px;
+  text-align: center;
+}
+.heroInner { max-width: 760px; margin: 0 auto; }
+.heroEyebrow {
+  margin: 0 0 14px;
+  font-size: .8rem;
+  letter-spacing: .22em;
+  color: var(--brand-highlight);
+  font-weight: 700;
+}
+.heroTitle { margin: 0 0 14px; font-size: clamp(1.6rem, 4.4vw, 2.3rem); font-weight: 900; line-height: 1.5; }
+.heroSub { margin: 0; font-size: 1rem; line-height: 1.9; color: rgba(255, 255, 255, .84); }
+
+/* ---------- 分類篩選 ---------- */
+.filterRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 34px;
+}
+.chip {
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: var(--white);
+  color: var(--muted);
+  font-size: .88rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.chip:hover { border-color: var(--brand-highlight); color: var(--brand-ink); }
+.chipActive { background: var(--brand-primary); border-color: var(--brand-primary); color: var(--cta-text); }
+.chipActive:hover { color: var(--cta-text); }
+
+/* ---------- 文章卡片 ---------- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 380px));
+  justify-content: center;
+  gap: 22px;
+  text-align: left;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--white);
+  border: 1px solid var(--border-soft);
+  text-decoration: none;
+  color: inherit;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.card:hover {
+  transform: translateY(-4px);
+  border-color: var(--brand-highlight);
+  box-shadow: 0 14px 30px rgba(35, 24, 21, .14);
+}
+.cardCover {
+  aspect-ratio: 16 / 9;
+  background: var(--brand-primary-soft);
+  overflow: hidden;
+}
+.cardCover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cardBody { padding: 20px 20px 18px; display: flex; flex-direction: column; flex: 1; }
+.cardMeta { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.cardCat {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-primary-soft);
+  color: var(--brand-primary);
+  font-size: .76rem;
+  font-weight: 800;
+}
+.cardDate { font-size: .8rem; color: var(--muted); }
+.cardTitle { margin: 0 0 10px; font-size: 1.1rem; font-weight: 800; line-height: 1.6; }
+.cardExcerpt { margin: 0; font-size: .9rem; line-height: 1.8; color: var(--muted); flex: 1; }
+.cardGo { margin-top: 14px; font-size: .88rem; font-weight: 800; color: var(--brand-primary); }
+.cardGo::after { content: " →"; }
+
+.empty {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius);
+  color: var(--muted);
+  line-height: 1.9;
+}
+
+/* ---------- 文章內頁 ---------- */
+.articleHead {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 46px 24px 0;
+  text-align: left;
+}
+.articleMeta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.articleTitle {
+  margin: 0 0 16px;
+  font-size: clamp(1.5rem, 4.4vw, 2.15rem);
+  font-weight: 900;
+  line-height: 1.5;
+  color: var(--brand-ink);
+}
+.articleExcerpt {
+  margin: 0 0 24px;
+  font-size: 1.03rem;
+  line-height: 1.9;
+  color: var(--muted);
+  padding-left: 16px;
+  border-left: 3px solid var(--brand-primary);
+}
+.articleCover { max-width: 900px; margin: 0 auto 8px; padding: 0 24px; }
+.articleCover img { width: 100%; border-radius: var(--radius); display: block; }
+
+/* ---------- Markdown 內文 ----------
+   行寬壓在 38em（中文約 28～30 字）。文章是這個站字最多的地方，
+   行太長讀者換行時會找不到下一行開頭。 */
+.body {
+  max-width: 38em;
+  margin: 0 auto;
+  padding: 30px 24px 10px;
+  font-size: 1.03rem;
+  line-height: 2;
+  color: var(--brand-ink);
+  text-align: left;
+}
+.body h2 {
+  margin: 42px 0 16px;
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1.6;
+  padding-left: 14px;
+  border-left: 4px solid var(--brand-primary);
+}
+.body h3 { margin: 32px 0 12px; font-size: 1.12rem; font-weight: 800; line-height: 1.6; }
+.body p { margin: 0 0 20px; }
+.body ul,
+.body ol { margin: 0 0 22px; padding-left: 22px; }
+.body li { margin-bottom: 8px; }
+.body strong { color: var(--brand-primary); font-weight: 800; }
+.body a { color: var(--brand-primary); font-weight: 700; }
+.body code {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  font-size: .92em;
+  word-break: break-all;
+}
+.body blockquote {
+  margin: 0 0 22px;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  background: var(--brand-primary-soft);
+  border-left: 4px solid var(--brand-primary);
+  font-weight: 600;
+}
+.body hr { margin: 34px 0; border: none; border-top: 1px solid var(--border-soft); }
+
+/* 表格一定要能自己橫向捲動 —— 稅率表在手機上一定塞不下，
+   讓它撐破版面會把整頁推出去橫向捲動。 */
+.body :global(.mdTableWrap) { overflow-x: auto; margin: 0 0 24px; }
+.body table { width: 100%; min-width: 420px; border-collapse: collapse; font-size: .93rem; }
+.body th,
+.body td { padding: 11px 13px; border: 1px solid var(--border-soft); text-align: left; line-height: 1.7; }
+.body thead th { background: var(--brand-primary-soft); font-weight: 800; white-space: nowrap; }
+
+/* ---------- 免責 ＋ CTA ---------- */
+.disclaimer {
+  max-width: 38em;
+  margin: 8px auto 0;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  font-size: .86rem;
+  line-height: 1.85;
+  color: var(--muted);
+  text-align: left;
+}
+.articleCta {
+  max-width: 38em;
+  margin: 34px auto 0;
+  padding: 28px 24px;
+  border-radius: var(--radius);
+  background: var(--brand-surface);
+  color: var(--white);
+  text-align: center;
+}
+.articleCtaTitle { margin: 0 0 10px; font-size: 1.2rem; font-weight: 900; }
+.articleCtaSub { margin: 0 0 20px; font-size: .95rem; line-height: 1.85; color: rgba(255, 255, 255, .84); }
+.articleCtaActions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+.related { max-width: 1180px; margin: 0 auto; }
+.relatedTitle { margin: 0 0 22px; font-size: 1.25rem; font-weight: 900; }

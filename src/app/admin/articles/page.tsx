@@ -2,16 +2,15 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAdminCheckArgs, isCurrentUserAdmin } from "@/lib/admin-check";
 import {
-  listProperties,
-  propertyStats,
-  propertyTypeLabel,
-  statusLabel,
-  PROPERTY_STATUSES,
-  DISTRICTS,
-  type PropertyQueue,
-  type PropertyRow,
-} from "@/lib/property";
-import { directImageUrl, parseImageList, parseVideoList } from "@/lib/media-url";
+  listArticles,
+  articleStats,
+  categoryLabel,
+  articleStatusLabel,
+  ARTICLE_CATEGORIES,
+  type ArticleQueue,
+  type ArticleRow,
+} from "@/lib/article";
+import { directImageUrl } from "@/lib/media-url";
 import { CIS, CHIP, type ChipTone } from "@/app/admin/_components/cis";
 import { Icon } from "@/app/admin/_ui/icons";
 import styles from "../customers/customers.module.css";
@@ -20,49 +19,45 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = {
   q?: string;
-  status?: string;
-  district?: string;
+  category?: string;
   queue?: string;
 };
 
-const QUEUES: Array<{ key: PropertyQueue; label: string; icon: Parameters<typeof Icon>[0]["name"] }> = [
-  { key: "all", label: "全部物件", icon: "home" },
-  { key: "published", label: "上架中", icon: "globe" },
+const QUEUES: Array<{ key: ArticleQueue; label: string; icon: Parameters<typeof Icon>[0]["name"] }> = [
+  { key: "all", label: "全部文章", icon: "home" },
+  { key: "published", label: "已發佈", icon: "globe" },
   { key: "draft", label: "草稿／下架", icon: "edit" },
-  { key: "closed", label: "已成交", icon: "success" },
 ];
 
 function statusTone(status: string): ChipTone {
   if (status === "published") return "success";
-  if (status === "reserved") return "warn";
-  if (status === "sold") return "info";
+  if (status === "hidden") return "warn";
   return "neutral";
 }
 
-/** 卡片上顯示「照片 N ・ 影片 N」，一眼看出哪些物件還沒補素材。 */
-function mediaCount(row: PropertyRow): { photos: number; videos: number } {
-  const photos = parseImageList(row.photo_urls).length + (row.cover_url ? 1 : 0);
-  return { photos, videos: parseVideoList(row.video_urls).length };
+function formatDate(d: Date | null): string {
+  if (!d) return "—";
+  const dt = new Date(d);
+  return `${dt.getFullYear()}/${String(dt.getMonth() + 1).padStart(2, "0")}/${String(dt.getDate()).padStart(2, "0")}`;
 }
 
-export default async function PropertiesPage({
+export default async function ArticlesAdminPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
   const { email } = await getAdminCheckArgs();
-  if (!email) redirect("/api/auth/signin?callbackUrl=%2Fadmin%2Fproperties");
+  if (!email) redirect("/api/auth/signin?callbackUrl=%2Fadmin%2Farticles");
   if (!(await isCurrentUserAdmin())) throw new Error("權限不足");
 
   const sp = await searchParams;
-  const queue = QUEUES.some((item) => item.key === sp.queue) ? (sp.queue as PropertyQueue) : "all";
-  const status = sp.status || "all";
-  const district = sp.district || "all";
+  const queue = QUEUES.some((item) => item.key === sp.queue) ? (sp.queue as ArticleQueue) : "all";
+  const category = sp.category || "all";
   const search = sp.q || "";
 
-  const [properties, stats] = await Promise.all([
-    listProperties({ queue, status, district, search }),
-    propertyStats(),
+  const [articles, stats] = await Promise.all([
+    listArticles({ queue, category, search }),
+    articleStats(),
   ]);
 
   return (
@@ -71,17 +66,17 @@ export default async function PropertiesPage({
         <div className={styles.titleRow}>
           <div>
             <h1 className={styles.title}>
-              <Icon name="building" size={26} />
-              房屋物件
+              <Icon name="book" size={26} />
+              房產知識文章
             </h1>
             <p className={styles.subtitle} style={{ color: CIS.textSub }}>
-              共 {stats.total} 件　上架中 {stats.published}　草稿／下架 {stats.draft}　已成交 {stats.sold}
+              共 {stats.total} 篇　已發佈 {stats.published}　草稿／下架 {stats.draft}
               {stats.views > 0 ? `　累計瀏覽 ${stats.views}` : ""}
             </p>
           </div>
           <div className={styles.headerActions}>
             <Link
-              href="/property"
+              href="/articles"
               target="_blank"
               className={styles.button}
               style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
@@ -90,35 +85,12 @@ export default async function PropertiesPage({
               看公開頁
             </Link>
             <Link
-              href="/admin/sellers"
-              className={styles.button}
-              style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
-            >
-              屋主客戶
-            </Link>
-            <Link
-              href="/admin/articles"
-              className={styles.button}
-              style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
-            >
-              <Icon name="book" size={15} />
-              知識文章
-            </Link>
-            <Link
-              href="/admin/calendar"
-              className={styles.button}
-              style={{ background: "rgba(255,255,255,0.05)", color: CIS.textSub, border: `1px solid ${CIS.cardBorder}` }}
-            >
-              <Icon name="calendar" size={15} />
-              行事曆
-            </Link>
-            <Link
-              href="/admin/properties/new"
+              href="/admin/articles/new"
               className={styles.button}
               style={{ background: CIS.blue, color: "#fff" }}
             >
               <Icon name="add" size={16} />
-              新增物件
+              新增文章
             </Link>
           </div>
         </div>
@@ -133,29 +105,18 @@ export default async function PropertiesPage({
               type="text"
               name="q"
               defaultValue={search}
-              placeholder="搜尋標題／地址／社區／短碼"
+              placeholder="搜尋標題／摘要／網址"
             />
           </div>
           <select
-            name="status"
-            defaultValue={status}
+            name="category"
+            defaultValue={category}
             className={styles.select}
             style={{ background: CIS.bgSoft, border: `1px solid ${CIS.cardBorder}`, color: CIS.text }}
           >
-            <option value="all">全部狀態</option>
-            {PROPERTY_STATUSES.map((s) => (
-              <option key={s.key} value={s.key}>{s.label}</option>
-            ))}
-          </select>
-          <select
-            name="district"
-            defaultValue={district}
-            className={styles.select}
-            style={{ background: CIS.bgSoft, border: `1px solid ${CIS.cardBorder}`, color: CIS.text }}
-          >
-            <option value="all">全部區域</option>
-            {DISTRICTS.map((d) => (
-              <option key={d} value={d}>{d}</option>
+            <option value="all">全部分類</option>
+            {ARTICLE_CATEGORIES.map((c) => (
+              <option key={c.key} value={c.key}>{c.label}</option>
             ))}
           </select>
           <button type="submit" className={styles.button} style={{ background: CIS.blueDeep, color: "#fff" }}>
@@ -170,7 +131,7 @@ export default async function PropertiesPage({
             return (
               <Link
                 key={item.key}
-                href={`/admin/properties?queue=${item.key}`}
+                href={`/admin/articles?queue=${item.key}`}
                 className={styles.tab}
                 style={{
                   background: active ? CIS.blue : "rgba(255,255,255,0.05)",
@@ -186,19 +147,17 @@ export default async function PropertiesPage({
         </div>
 
         <div className={styles.list}>
-          {properties.length === 0 ? (
+          {articles.length === 0 ? (
             <div className={styles.empty} style={{ borderColor: CIS.cardBorder, color: CIS.textMute }}>
-              還沒有物件。點右上角「新增物件」開始第一件。
+              還沒有文章。點右上角「新增文章」開始第一篇。
             </div>
           ) : (
-            properties.map((p: PropertyRow) => {
-              const cover = p.cover_url ? directImageUrl(p.cover_url) : parseImageList(p.photo_urls)[0];
-              const media = mediaCount(p);
-              const typeText = propertyTypeLabel(p);
+            articles.map((a: ArticleRow) => {
+              const cover = a.cover_url ? directImageUrl(a.cover_url) : null;
               return (
                 <Link
-                  key={p.id}
-                  href={`/admin/properties/${p.id}`}
+                  key={a.id}
+                  href={`/admin/articles/${a.id}`}
                   className={styles.card}
                   style={{ background: CIS.card, borderColor: CIS.cardBorder, color: CIS.text }}
                 >
@@ -234,16 +193,16 @@ export default async function PropertiesPage({
                           fontSize: 12,
                         }}
                       >
-                        沒有照片
+                        沒有封面
                       </div>
                     )}
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className={styles.cardHeader}>
                         <div style={{ minWidth: 0 }}>
-                          <div className={styles.identity}>{p.title}</div>
+                          <div className={styles.identity}>{a.title}</div>
                           <div style={{ color: CIS.textMute, fontSize: 14, marginTop: 3 }}>
-                            {[p.district, typeText, p.layout, p.floor_info, p.parking]
+                            {[a.category ? categoryLabel(a.category) : null, formatDate(a.published_at)]
                               .filter(Boolean)
                               .join("．")}
                           </div>
@@ -252,12 +211,12 @@ export default async function PropertiesPage({
                           <span
                             className={styles.chip}
                             style={{
-                              background: CHIP[statusTone(p.status)].bg,
-                              color: CHIP[statusTone(p.status)].color,
-                              borderColor: CHIP[statusTone(p.status)].border,
+                              background: CHIP[statusTone(a.status)].bg,
+                              color: CHIP[statusTone(a.status)].color,
+                              borderColor: CHIP[statusTone(a.status)].border,
                             }}
                           >
-                            {statusLabel(p.status)}
+                            {articleStatusLabel(a.status)}
                           </span>
                         </div>
                       </div>
@@ -273,26 +232,14 @@ export default async function PropertiesPage({
                           color: CIS.textSub,
                         }}
                       >
-                        {p.price ? (
-                          <span style={{ color: CIS.yellow, fontWeight: 900, fontSize: 17 }}>
-                            {p.price} 萬
-                          </span>
-                        ) : (
-                          <span style={{ color: CIS.textMute }}>未定價</span>
-                        )}
                         <span style={{ color: CIS.textMute }}>
-                          <Icon name="image" size={13} /> {media.photos}
-                          {"　"}
-                          <Icon name="video" size={13} /> {media.videos}
+                          <Icon name="eye" size={13} /> {a.view_count}
                         </span>
-                        <span style={{ color: CIS.textMute }}>
-                          <Icon name="eye" size={13} /> {p.view_count}
-                        </span>
-                        <code style={{ color: CIS.textMute, fontSize: 13 }}>/property/{p.slug}</code>
+                        <code style={{ color: CIS.textMute, fontSize: 13 }}>/articles/{a.slug}</code>
                       </div>
 
-                      {p.headline ? (
-                        <div style={{ marginTop: 7, fontSize: 15, color: CIS.text }}>{p.headline}</div>
+                      {a.excerpt ? (
+                        <div style={{ marginTop: 7, fontSize: 15, color: CIS.text }}>{a.excerpt}</div>
                       ) : null}
                     </div>
                   </div>
