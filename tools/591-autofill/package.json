@@ -1,0 +1,14 @@
+{
+  "name": "591-autofill",
+  "private": true,
+  "type": "module",
+  "description": "把物件資料庫的一筆物件，用 Playwright 填進 591 刊登表單（只填到草稿，不送出）",
+  "scripts": {
+    "login": "node save-login.mjs",
+    "inspect": "node inspect-form.mjs",
+    "fill": "node fill.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

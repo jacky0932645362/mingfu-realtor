@@ -1,0 +1,10 @@
+node_modules/
+
+# 🔴 591 的登入 cookie。等同帳號鑰匙，絕對不要進版控
+auth/
+
+# 每次跑留下的截圖（會累積，也可能拍到內部資料）
+shots/
+
+# inspect 抄回來的表單結構。裡面可能有帳號相關的預設值，留在本機就好
+config/form-dump.json

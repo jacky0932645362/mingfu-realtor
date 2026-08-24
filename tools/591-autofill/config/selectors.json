@@ -1,0 +1,47 @@
+{
+  "_說明": [
+    "591 刊登表單的欄位對映。這個檔是整個工具唯一需要維護的地方 ——",
+    "591 改版時只要重跑 npm run inspect、把這裡的 selector 換掉，程式碼一行都不用動。",
+    "",
+    "每一欄的寫法：",
+    "  selector  = 那一格的 CSS 選擇器（從 config/form-dump.json 抄）",
+    "  action    = fill（打字，預設）/ select（下拉）/ click（點一下）/ type（逐字打，給會偵測鍵盤事件的欄位）",
+    "  from      = 值從哪來。@ 開頭是特殊來源，其他填 591 上架包裡的欄位標籤",
+    "  transform = number（只取數字，例：\"32.55 坪\" → \"32.55\"）/ int（只取整數）",
+    "",
+    "from 可以填的特殊來源：",
+    "  @title        591 標題（你自己寫的 headline 優先）",
+    "  @titleShort   同上但裁到 30 字",
+    "  @description  組好的物件描述全文",
+    "  @layout.rooms / @layout.halls / @layout.baths   格局拆成三個數字",
+    "  @floor.floor / @floor.total                     樓層拆成第幾樓／共幾樓",
+    "",
+    "from 也可以直接填這些欄位標籤（跟後台那頁的對照表同一組）：",
+    "  售價（萬元）／物件類型／縣市／行政區／地址／社區名稱／格局／建物坪數／",
+    "  主建物坪數／土地坪數／樓層／總樓層／屋齡／朝向／車位／建設公司"
+  ],
+
+  "formUrl": "",
+
+  "fields": {
+    "標題": { "selector": "", "action": "fill", "from": "@title" },
+    "售價": { "selector": "", "action": "fill", "from": "售價（萬元）", "transform": "number" },
+    "物件類型": { "selector": "", "action": "select", "from": "物件類型" },
+    "縣市": { "selector": "", "action": "select", "from": "縣市" },
+    "行政區": { "selector": "", "action": "select", "from": "行政區" },
+    "地址": { "selector": "", "action": "fill", "from": "地址" },
+    "社區名稱": { "selector": "", "action": "fill", "from": "社區名稱" },
+    "房": { "selector": "", "action": "select", "from": "@layout.rooms" },
+    "廳": { "selector": "", "action": "select", "from": "@layout.halls" },
+    "衛": { "selector": "", "action": "select", "from": "@layout.baths" },
+    "建物坪數": { "selector": "", "action": "fill", "from": "建物坪數", "transform": "number" },
+    "主建物坪數": { "selector": "", "action": "fill", "from": "主建物坪數", "transform": "number" },
+    "土地坪數": { "selector": "", "action": "fill", "from": "土地坪數", "transform": "number" },
+    "樓層": { "selector": "", "action": "fill", "from": "@floor.floor", "transform": "int" },
+    "總樓層": { "selector": "", "action": "fill", "from": "@floor.total", "transform": "int" },
+    "屋齡": { "selector": "", "action": "fill", "from": "屋齡", "transform": "number" },
+    "朝向": { "selector": "", "action": "select", "from": "朝向" },
+    "車位": { "selector": "", "action": "fill", "from": "車位" },
+    "物件描述": { "selector": "", "action": "fill", "from": "@description" }
+  }
+}
