@@ -12,12 +12,33 @@
  *
  * ⚠️ 找不到的欄位一律回傳 null／空陣列並記進 warnings，絕不猜。
  *    591 改版時，先看 warnings 裡缺哪個欄位，再回來對照真實頁面調整下面的選取器。
+ *
+ * ⚠️⚠️ `extractCommunityComps()`（社區在售物件清單頁）有一個更明確的反爬蟲機制：
+ *    591 用自訂元素 `<wc-obfuscate-price>`／`<wc-obfuscate-area>`／`<wc-obfuscate-floor>`
+ *    把總價、坪數、樓層直接藏起來（不是排序詭計，是內容真的不在 DOM 裡）——這已經不是
+ *    「格式難解析」，是 591 明確表態「這幾個數字在列表頁不給程式讀」。**這裡刻意不試圖破解，
+ *    只抓這三個元件以外、591 自己就用純文字顯示的欄位**（標題／格局／仲介／標籤／單價）。
+ *    不要為了補齊總價／坪數／樓層去研究怎麼繞過這幾個自訂元素——那已經跨過「讀公開頁面」
+ *    到「破解主動的技術性防護」，是刻意劃的線，不是還沒做完。要精確數字，報告會附連結，
+ *    人自己點進單一物件頁看（那一頁這些欄位就是純文字，見 extractListing()）。
  */
 
 export async function extractListing(page) {
   const raw = await page.evaluate(() => {
+    /**
+     * 591 這頁偶爾會在還沒 hydrate 完成時被抓到，這時候欄位裡讀到的不是真的資料，
+     * 是字面上的樣板語法（例如標題直接讀到字串 "${title}"）。這種內容比「抓不到」
+     * 更危險——它看起來像有值，會被當成真資料印進報告。凡是含樣板語法的一律當成
+     * 沒抓到（回空字串，交給下面既有的 warnings 機制），不能讓這種字面上的
+     * 「${...}」流進最後給屋主看的報告。
+     */
+    function looksLikeUnrenderedTemplate(s) {
+      return /\$\{|\{\{|<%[=-]?/.test(s);
+    }
     function text(el) {
-      return el ? el.textContent.trim() : "";
+      if (!el) return "";
+      const t = el.textContent.trim();
+      return looksLikeUnrenderedTemplate(t) ? "" : t;
     }
 
     /** 依 style.order 排序後拼字，破解 591 對特定數字的 DOM 亂序反爬蟲。 */
@@ -160,4 +181,41 @@ export async function extractListing(page) {
   raw.sourceUrl = page.url();
   raw.fetchedAt = new Date().toISOString();
   return raw;
+}
+
+/**
+ * 從社區「在售物件」清單頁（`community.onSaleListUrl`，market.591.com.tw/{id}/sale）
+ * 抽出實際在售的個別物件——這才是真正的「競品」清單，不是只有社區級的統計數字。
+ *
+ * 只抓頁面載入當下已經渲染出來的卡片（通常十來筆），不模擬捲動載入更多、
+ * 不翻頁抓完整份 67 筆——那會從「看一頁」變成「把整份清單搬過來」，
+ * 已經不是這支工具設計時談過的風險範圍。報告裡會誠實寫「頁面顯示的前 N 筆，
+ * 共 M 筆」，不會假裝這就是全部。
+ */
+export async function extractCommunityComps(page) {
+  return page.evaluate(() => {
+    function text(el) {
+      return el ? el.textContent.trim() : "";
+    }
+
+    const cards = Array.from(document.querySelectorAll("a > div.info"));
+    return cards.map((info) => {
+      const link = info.parentElement;
+      const detail = info.querySelector(".detail");
+      const spans = detail ? Array.from(detail.querySelectorAll(":scope > span")) : [];
+      // .detail 底下第一個 span 是格局（純文字）；坪數／樓層那兩個 span 內容被
+      // <wc-obfuscate-*> 自訂元件吃掉，textContent 讀出來就是空的，刻意留白不硬湊。
+      const layout = spans[0] ? text(spans[0]) : null;
+
+      return {
+        title: text(info.querySelector("h3")) || null,
+        url: link ? link.href.split("?")[0] : null,
+        layout,
+        agent: text(info.querySelector(".normal-broker-name span")) || null,
+        viewCountText: text(info.querySelector(".normal-broker-browse span")) || null,
+        tags: Array.from(info.querySelectorAll(".tags .tag")).map((t) => text(t)),
+        unitPrice: text(info.querySelector(".price-info .price")) || null,
+      };
+    });
+  });
 }

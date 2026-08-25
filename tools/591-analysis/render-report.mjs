@@ -86,6 +86,36 @@ function renderRoomBreakdownRows(rows, subjectRoomCount) {
     </table>`;
 }
 
+/**
+ * 真正逐筆列出的競品：同社區目前在售的其他物件。
+ *
+ * 總價／坪數／樓層這三格 591 在清單頁刻意用自訂元件藏起來（見 extract.mjs 的
+ * `extractCommunityComps` 註解），這裡故意留白＋一個連去該物件詳情頁的連結，
+ * 不是抓漏了——要精確數字，人自己點進去看，那一頁 591 就會顯示。
+ */
+function renderCompsTable(comps, subjectUrl) {
+  if (!comps?.length) return `<p class="muted">社區在售清單頁抓不到個別物件（591 可能改版了）。</p>`;
+  return `
+    <table class="data-table">
+      <thead><tr><th>物件</th><th>格局</th><th>單價</th><th>標籤</th><th>仲介</th></tr></thead>
+      <tbody>
+        ${comps
+          .map((c) => {
+            const isSubject = subjectUrl && c.url === subjectUrl;
+            return `<tr class="${isSubject ? "is-subject" : ""}">
+              <td><a href="${c.url || "#"}" target="_blank" rel="noopener">${escapeHtml(c.title || "（無標題）")}</a>${isSubject ? '<span class="chip">本件</span>' : ""}</td>
+              <td>${escapeHtml(c.layout || "—")}</td>
+              <td>${escapeHtml(c.unitPrice || "—")}</td>
+              <td>${c.tags?.length ? escapeHtml(c.tags.join("・")) : "—"}</td>
+              <td>${escapeHtml(c.agent || "—")}</td>
+            </tr>`;
+          })
+          .join("")}
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:6px;">總價／坪數／樓層 591 在這個清單頁沒有顯示，點物件連結進去看該頁的完整資訊。</p>`;
+}
+
 function renderDealRows(deals) {
   if (!deals?.length) return `<p class="muted">頁面上沒有顯示實價登錄樣本。</p>`;
   return `
@@ -178,6 +208,8 @@ export function renderReport(data, owner) {
   .data-table th { text-align: left; color: var(--ink-3); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--rule); }
   .data-table td { padding: 8px; border-bottom: 1px solid var(--rule-soft); }
   .data-table tr.is-subject td { background: var(--surface-2); font-weight: 700; }
+  .data-table a { color: var(--brand); text-decoration: none; }
+  .data-table a:hover { text-decoration: underline; }
   .chip { display: inline-block; margin-left: 6px; font-size: 11px; background: var(--brand); color: var(--brand-ink); border-radius: 999px; padding: 1px 8px; font-weight: 600; }
   .muted { color: var(--ink-3); font-size: 13px; }
   .links { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; margin-top: 6px; }
@@ -248,7 +280,12 @@ export function renderReport(data, owner) {
         : `<p class="muted">本件房型與社區成交均價的房型對不上，或社區資料不足，這裡先不算差距。</p>`
     }
 
-    <h3 style="font-size:13px;color:var(--ink-3);margin:18px 0 8px;">在售房型分布</h3>
+    <h3 style="font-size:13px;color:var(--ink-3);margin:18px 0 8px;">
+      同社區在售競品（頁面顯示前 ${community.comps?.length ?? 0} 筆，社區共 ${community.onSaleCount ?? "—"} 筆在售）
+    </h3>
+    ${renderCompsTable(community.comps, data.sourceUrl)}
+
+    <h3 style="font-size:13px;color:var(--ink-3);margin:18px 0 8px;">在售房型分布（社區整體統計）</h3>
     ${renderRoomBreakdownRows(community.roomBreakdown, subjectRoomCount)}
 
     <h3 style="font-size:13px;color:var(--ink-3);margin:18px 0 8px;">實價登錄樣本（頁面顯示的部分，共 ${community.dealCount ?? "—"} 筆）</h3>

@@ -8,9 +8,10 @@
 import { chromium } from "playwright";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
-import { extractListing } from "./extract.mjs";
+import { extractListing, extractCommunityComps } from "./extract.mjs";
 
 const FIXTURE = pathToFileURL(path.join(import.meta.dirname, "fixtures", "sample-detail.html")).href;
+const COMPS_FIXTURE = pathToFileURL(path.join(import.meta.dirname, "fixtures", "sample-comps.html")).href;
 
 let pass = 0;
 let fail = 0;
@@ -78,6 +79,27 @@ check("recentDeals[0]", data.community.recentDeals[0], {
   totalPrice: "1,550萬",
 });
 check("recentDeals.length", data.community.recentDeals.length, 2);
+
+await page.goto(COMPS_FIXTURE);
+const comps = await extractCommunityComps(page);
+
+check("comps.length", comps.length, 3);
+check("comps[0]（純文字欄位）", comps[0], {
+  title: "S-『專任』富宇松禾苑//大三房+B1雙平車//視野戶💯",
+  url: "https://sale.591.com.tw/home/house/detail/2/20484723.html",
+  layout: "3房2廳",
+  agent: "仲介陳家萱",
+  viewCountText: "77人瀏覽",
+  tags: ["含車位", "有格局圖"],
+  unitPrice: "41.4萬/坪",
+});
+check("comps[2].tags（降價／有陽台這種多標籤）", comps[2].tags, ["降價", "含車位", "有陽台"]);
+// ⭐ 這三格刻意驗證「抓不到」：591 用 <wc-obfuscate-*> 把內容藏起來，
+// extractCommunityComps() 沒有嘗試破解，這裡確認程式老實回傳空值而不是亂猜。
+// 目前實作根本不讀這三個欄位（見 extract.mjs 註解），所以是 undefined。
+check("comps[0] 沒有 totalPrice 欄位（591 用自訂元件藏起來，刻意不試圖破解）", comps[0].totalPrice, undefined);
+check("comps[0] 沒有 size 欄位（同上）", comps[0].size, undefined);
+check("comps[0] 沒有 floor 欄位（同上）", comps[0].floor, undefined);
 
 await browser.close();
 
