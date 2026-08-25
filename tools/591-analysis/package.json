@@ -1,0 +1,13 @@
+{
+  "name": "591-analysis",
+  "private": true,
+  "type": "module",
+  "description": "貼一個 591 物件網址，抓該頁本來就有的社區行情資料，產生內部判讀＋屋主溝通版報告",
+  "scripts": {
+    "analyze": "node analyze.mjs",
+    "test": "node test-extract-logic.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
