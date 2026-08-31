@@ -51,7 +51,7 @@ export const OWNER = {
   /** 公司地址（「公司面談」這個選項會顯示它） */
   address: "台中市梧棲區四維中路338號",
   /** 公司／品牌名 */
-  company: "太平洋房屋 梧棲市鎮加盟店",
+  company: "太平洋房屋 梧棲新市鎮加盟店",
   /** 大頭照放 public/card/ 底下 */
   photoUrl: "/card/owner.jpg",
   /**

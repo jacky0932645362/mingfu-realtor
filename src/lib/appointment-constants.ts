@@ -49,7 +49,7 @@ export const URGENCIES = [
 // 2026-08-12：原範本有「分公司」「工作室」兩個範例地點（台中西屯的假地址），
 // 蕭茗馥只有梧棲一間門市，全部移除，只留門市 / 電話 / 視訊 / 客戶指定四種。
 export const MEET_TYPES = [
-  { key: "office", label: "門市面談", emoji: "🏢", desc: "太平洋房屋 梧棲市鎮加盟店・台中市梧棲區四維中路338號" },
+  { key: "office", label: "門市面談", emoji: "🏢", desc: "太平洋房屋 梧棲新市鎮加盟店・台中市梧棲區四維中路338號" },
   { key: "phone", label: "電話聯繫", emoji: "📞", desc: "茗馥主動來電" },
   { key: "video", label: "線上視訊", emoji: "💻", desc: "Google Meet / LINE 視訊" },
   // 2026-06-25 第 4 種:客戶自己指定見面地點（Google Places 自動完成 + 純文字備案）

@@ -263,7 +263,7 @@ function realtorEmailLayout(opts: { title: string; preheader?: string; bodyHtml:
 <tr><td align="center">
 <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(28,45,58,0.08)">
   <tr><td style="background:linear-gradient(135deg,#4EC4DC,#2BA9C4);padding:22px 32px">
-    <div style="font-size:13px;color:#E8F7FB;letter-spacing:1px">太平洋房屋 梧棲市鎮加盟店</div>
+    <div style="font-size:13px;color:#E8F7FB;letter-spacing:1px">太平洋房屋 梧棲新市鎮加盟店</div>
     <div class="h1" style="font-size:24px;font-weight:800;color:#FFFFFF;margin-top:4px">${esc(opts.title)}</div>
   </td></tr>
   <tr><td class="px" style="padding:28px 32px">${opts.bodyHtml}</td></tr>
@@ -292,7 +292,7 @@ function transactionalEmailLayout(opts: { title: string; preheader?: string; bod
 <table role="presentation" class="container" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#FFFFFF;border:1px solid #E3EAEE;border-radius:12px;overflow:hidden">
   <tr><td style="height:4px;background:#4EC4DC;font-size:0;line-height:0">&nbsp;</td></tr>
   <tr><td class="px" style="padding:22px 30px 4px">
-    <div style="font-size:13px;color:#7A8896">太平洋房屋 梧棲市鎮加盟店</div>
+    <div style="font-size:13px;color:#7A8896">太平洋房屋 梧棲新市鎮加盟店</div>
     <div style="font-size:20px;font-weight:700;color:#1C2D3A;margin-top:4px">${esc(opts.title)}</div>
   </td></tr>
   <tr><td class="px" style="padding:8px 30px 26px">${opts.bodyHtml}</td></tr>

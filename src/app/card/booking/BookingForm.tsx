@@ -63,7 +63,7 @@ function readGaClientId(): string {
 const MODE_DESCRIPTIONS: Record<BookingMode, string> = {
   realtor: "買賣、租賃、房產法律或其他不動產問題",
   collaboration: "異業合作、媒體採訪、講座或品牌合作",
-  interview: "應徵太平洋房屋 梧棲市鎮加盟店相關職務",
+  interview: "應徵太平洋房屋 梧棲新市鎮加盟店相關職務",
 };
 
 const MODE_INTENTS: Record<BookingMode, IntentOption[]> = {
@@ -753,7 +753,7 @@ export default function BookingForm() {
       <main className={styles.page}>
         <div className={styles.shell}>
           <header className={styles.header}>
-            <div className={styles.brand}>太平洋房屋 梧棲市鎮加盟店</div>
+            <div className={styles.brand}>太平洋房屋 梧棲新市鎮加盟店</div>
             <h1 className={styles.title}>預約進度</h1>
           </header>
           <section className={`${styles.statusPanel} ${pending ? styles.statusPanelWarning : ""} ${expired ? styles.statusPanelDanger : ""}`}>
@@ -813,7 +813,7 @@ export default function BookingForm() {
     <main className={styles.page}>
       <div className={styles.shell}>
         <header className={styles.header}>
-          <div className={styles.brand}>太平洋房屋 梧棲市鎮加盟店</div>
+          <div className={styles.brand}>太平洋房屋 梧棲新市鎮加盟店</div>
           <h1 className={styles.title}>預約與茗馥聊聊</h1>
           <p className={styles.lead}>先告訴我這次要談什麼，系統只會顯示適合的方式、時長與必要問題。</p>
           <Progress current={currentStep} />
