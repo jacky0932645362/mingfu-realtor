@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  listPublicProperties,
-  propertyTypeLabel,
-  DISTRICTS,
-  type PropertyRow,
-} from "@/lib/property";
-import { directImageUrl, parseImageList } from "@/lib/media-url";
+import { listPublicProperties, DISTRICTS } from "@/lib/property";
 import { OWNER, SITE_URL } from "@/config/owner";
 import SiteNav from "../_components/SiteNav";
+import PropertyCard from "../_components/PropertyCard";
+import { toPropertyCardData } from "../_components/property-card-data";
 import styles from "./property.module.css";
 
 export const dynamic = "force-dynamic";
@@ -80,35 +76,13 @@ export default async function PropertyListPage({
             </a>
           </div>
         ) : (
+          /* 2026-09-01 換成共用的 PropertyCard（照片可左右翻、賣點條列、
+             物件資訊／影片賞析／預約看屋 三顆按鈕）。首頁「物件精選」用的是同一張卡，
+             改樣式請改 _components/PropertyCard.module.css，不要在這裡另外蓋。 */
           <div className={styles.cardGrid}>
-            {properties.map((p: PropertyRow) => {
-              const cover = p.cover_url ? directImageUrl(p.cover_url) : parseImageList(p.photo_urls)[0];
-              const meta = [p.district, propertyTypeLabel(p), p.layout, p.floor_info, p.parking]
-                .filter(Boolean)
-                .join("．");
-              return (
-                <Link key={p.id} href={`/property/${p.slug}`} className={styles.card}>
-                  {cover ? (
-                    <div className={styles.cardCover}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={cover} alt={p.title} loading="lazy" />
-                    </div>
-                  ) : (
-                    <div className={styles.cardNoPhoto}>照片整理中</div>
-                  )}
-                  <div className={styles.cardBody}>
-                    <div className={styles.cardPrice}>
-                      {p.price ? `${p.price} 萬` : "價格請洽詢"}
-                    </div>
-                    <div className={styles.cardTitle}>{p.headline?.trim() || p.title}</div>
-                    {meta ? <div className={styles.cardMeta}>{meta}</div> : null}
-                    {p.status === "reserved" ? (
-                      <span className={styles.cardBadge}>已有斡旋</span>
-                    ) : null}
-                  </div>
-                </Link>
-              );
-            })}
+            {properties.map((p) => (
+              <PropertyCard key={p.id} data={toPropertyCardData(p)} />
+            ))}
           </div>
         )}
 

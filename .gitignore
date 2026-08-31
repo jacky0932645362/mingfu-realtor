@@ -9,6 +9,13 @@ build/
 .env*.local
 .env.production
 
+# 🔴 只給本機看樣子用的暫時頁，絕對不要上線 —— 部署出去等於在正式站
+#    多開一個 /dev-card-preview 網址，客戶或 Google 都可能撞見。
+/src/app/dev-card-preview/
+
+# 本機開發伺服器的啟動設定，只對這台電腦有意義
+/.claude/
+
 *.log
 npm-debug.log*
 .DS_Store
