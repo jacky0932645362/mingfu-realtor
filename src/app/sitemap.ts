@@ -19,6 +19,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const fixed: MetadataRoute.Sitemap = [
     // 首頁 —— 客戶搜「梧棲房仲」進來的主要落地頁
     { url: `${base}/`, lastModified: now, changeFrequency: "weekly", priority: 1 },
+    // 完整版關於我 —— 客戶搜人名／「房仲蕭邦」時的第二個落地頁
+    { url: `${base}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     // 數位名片
     { url: `${base}/card`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     // 線上預約

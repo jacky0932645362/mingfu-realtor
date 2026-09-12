@@ -1,0 +1,403 @@
+/* ============================================================================
+ * /about 完整版關於我（2026-09-01）
+ *
+ * 色票吃 globals.css :root 的 --brand-*，這裡不自己發明顏色
+ * （無障礙對比度鐵律寫在 globals.css 檔頭）。
+ *
+ * 版面語言沿用首頁：小圓角、白底大留白、細線點綴。
+ * 差別在這頁是「讀」的頁面不是「掃」的頁面，所以行寬刻意收窄到 38em 左右，
+ * 一行太長讀起來會跳行。
+ * ========================================================================== */
+
+.page {
+  min-height: 100vh;
+  color: var(--brand-ink);
+  background: var(--white);
+  line-height: 1.85;
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  overflow-x: hidden;
+}
+.page img { max-width: 100%; display: block; }
+
+.shell {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 56px 24px 96px;
+}
+
+/* ---------- 按鈕（與首頁同一套） ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 30px;
+  border-radius: var(--radius-sm);
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: .02em;
+  text-decoration: none;
+  border: 2px solid transparent;
+  transition: background-color .15s ease, transform .15s ease, border-color .15s ease, color .15s ease;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn:focus-visible {
+  outline: 3px solid var(--brand-primary);
+  outline-offset: 3px;
+}
+
+/* 紅底一律白字（5.04:1） */
+.btnPrimary {
+  background: var(--brand-primary);
+  color: var(--cta-text);
+  box-shadow: 0 8px 22px rgba(224, 0, 0, .26);
+}
+.btnPrimary:hover { background: var(--brand-primary-deep); }
+
+/* LINE 用壓深的綠，原廠綠配白字只有 2.26:1 */
+.btnLine {
+  background: var(--line-green);
+  color: var(--white);
+  box-shadow: 0 8px 22px rgba(4, 137, 62, .24);
+}
+.btnLine:hover { background: #036c31; }
+
+.btnOutline {
+  background: var(--white);
+  color: var(--brand-ink);
+  border-color: var(--border-soft);
+}
+.btnOutline:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+/* ---------- 開頭 ---------- */
+.head {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 40px;
+  align-items: center;
+  padding-bottom: 48px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.headPhoto {
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 18px 44px rgba(35, 24, 21, .16);
+}
+.headPhoto img {
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+}
+
+.headText { display: flex; flex-direction: column; gap: 10px; }
+
+.eyebrow {
+  margin: 0;
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .22em;
+  color: var(--brand-primary);
+}
+
+.name {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 2.7rem);
+  font-weight: 900;
+  line-height: 1.25;
+  letter-spacing: -.02em;
+}
+.persona {
+  font-size: .5em;
+  font-weight: 700;
+  color: var(--muted);
+  margin-left: .35em;
+}
+
+.role {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.tagline {
+  margin: 6px 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.7;
+}
+.tagline em {
+  font-style: normal;
+  color: var(--brand-primary);
+  letter-spacing: .04em;
+}
+
+.headActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+/* ---------- 內容區塊 ---------- */
+.block {
+  padding: 52px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.blockTitle {
+  margin: 0 0 8px;
+  font-size: clamp(1.35rem, 3.2vw, 1.7rem);
+  font-weight: 900;
+  letter-spacing: -.01em;
+  text-wrap: balance;
+}
+.blockTitle::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 3px;
+  margin-top: 12px;
+  background: var(--brand-primary);
+  border-radius: 2px;
+}
+
+.blockSub {
+  margin: 14px 0 0;
+  max-width: 38em;
+  color: var(--muted);
+}
+
+.prose {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 24px;
+  max-width: 38em;
+}
+.prose p { margin: 0; font-size: 1.03rem; }
+
+.creed {
+  margin: 30px 0 0;
+  padding: 22px 26px;
+  max-width: 38em;
+  border-left: 4px solid var(--brand-primary);
+  background: var(--brand-primary-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.85;
+}
+
+/* ---------- 數字 ---------- */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+}
+.stat {
+  padding: 24px 18px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  text-align: center;
+}
+.statNum {
+  font-size: 2.4rem;
+  font-weight: 900;
+  color: var(--brand-primary);
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+.statUnit {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--brand-primary);
+  margin-left: 3px;
+}
+.statLabel {
+  display: block;
+  margin-top: 8px;
+  font-size: .87rem;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.statNote {
+  margin: 20px 0 0;
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+/* ---------- 服務區域 ---------- */
+.areaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+.areaChip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 26px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  font-size: 1.12rem;
+  font-weight: 800;
+  transition: border-color .15s ease;
+}
+.areaChip:hover { border-color: var(--brand-primary); }
+.areaChip em {
+  font-style: normal;
+  font-size: .78rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ---------- 服務項目 ---------- */
+.serviceList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+}
+.serviceCard {
+  padding: 24px 22px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.serviceCard:hover {
+  border-color: var(--brand-highlight);
+  box-shadow: 0 10px 26px rgba(35, 24, 21, .08);
+}
+.serviceCard h3 {
+  margin: 0 0 8px;
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: var(--brand-primary);
+}
+.serviceCard p {
+  margin: 0;
+  font-size: .93rem;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+/* ---------- 客戶評價 ---------- */
+.tmList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+}
+.tmCard {
+  margin: 0;
+  padding: 24px 22px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tmCard blockquote {
+  margin: 0;
+  font-size: .94rem;
+  line-height: 1.9;
+}
+.tmCard figcaption {
+  font-size: .84rem;
+  font-weight: 800;
+  color: var(--brand-primary);
+  letter-spacing: .04em;
+}
+
+/* ---------- 收尾 CTA ---------- */
+.cta {
+  margin-top: 56px;
+  padding: 48px 32px;
+  border-radius: var(--radius);
+  background: var(--brand-surface);
+  color: var(--white);
+  text-align: center;
+}
+.ctaTitle {
+  margin: 0;
+  font-size: clamp(1.4rem, 3.4vw, 1.85rem);
+  font-weight: 900;
+  letter-spacing: -.01em;
+}
+.ctaSub {
+  margin: 14px auto 0;
+  max-width: 34em;
+  color: var(--brand-highlight-soft);
+  font-size: .98rem;
+}
+.ctaActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+/* 深色底上的描邊鈕要換成白字白框，沿用白底那組會整顆看不見 */
+.cta .btnOutline {
+  background: transparent;
+  color: var(--white);
+  border-color: rgba(255, 255, 255, .5);
+}
+.cta .btnOutline:hover {
+  background: var(--white);
+  color: var(--brand-ink);
+  border-color: var(--white);
+}
+.ctaMeta {
+  margin: 26px 0 0;
+  font-size: .84rem;
+  color: var(--brand-highlight-soft);
+}
+
+.backRow {
+  margin-top: 40px;
+  text-align: center;
+}
+.backLink {
+  color: var(--brand-primary);
+  font-weight: 800;
+  text-decoration: none;
+  text-underline-offset: 4px;
+}
+.backLink:hover { text-decoration: underline; }
+.backLink:focus-visible {
+  outline: 3px solid var(--brand-primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ---------- 手機 ---------- */
+@media (max-width: 760px) {
+  .shell { padding: 36px 18px 72px; }
+  .head {
+    grid-template-columns: 1fr;
+    gap: 26px;
+    text-align: center;
+  }
+  .headPhoto { max-width: 260px; margin: 0 auto; }
+  .headActions { justify-content: center; }
+  .blockTitle::after { margin-left: 0; }
+  .cta { padding: 36px 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn:hover,
+  .serviceCard,
+  .areaChip { transition: none; transform: none; }
+}

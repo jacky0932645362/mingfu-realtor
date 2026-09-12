@@ -1,5 +1,5 @@
 /**
- * / — 蕭茗馥個人官網首頁（太平洋房屋 梧棲市鎮加盟店）
+ * / — 蕭茗馥個人官網首頁（太平洋房屋 梧棲新市鎮加盟店）
  *
  * 站台結構（官網、名片、預約系統同一個網址）：
  *   /              官網（這頁）
@@ -32,9 +32,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { OWNER, SOCIAL, SITE_URL } from "@/config/owner";
-import { listSoldProperties, propertyTypeLabel, type PropertyRow } from "@/lib/property";
+import {
+  listSoldProperties,
+  listPublicProperties,
+  propertyTypeLabel,
+  type PropertyRow,
+} from "@/lib/property";
 import { directImageUrl, parseImageList } from "@/lib/media-url";
 import SiteNav from "./_components/SiteNav";
+import PropertyCard from "./_components/PropertyCard";
+import { toPropertyCardData } from "./_components/property-card-data";
 import styles from "./home.module.css";
 
 /**
@@ -199,7 +206,7 @@ export const metadata: Metadata = {
     "沙鹿房屋買賣", "龍井房屋買賣", "清水房屋買賣", "梧棲房屋買賣",
     "台中海線土地買賣", "沙鹿土地", "龍井土地", "清水土地", "梧棲土地",
     // 品牌
-    "太平洋房屋", "太平洋房屋梧棲", "太平洋房屋梧棲市鎮加盟店",
+    "太平洋房屋", "太平洋房屋梧棲", "太平洋房屋梧棲新市鎮加盟店",
     // 服務
     "不動產資產配置", "房地合一稅諮詢", "房屋稅務諮詢", "中古屋簡易裝潢",
     // 人名
@@ -314,6 +321,9 @@ const JSON_LD = {
   ],
 };
 
+/** 首頁「物件精選」最多放幾筆。三張剛好一排，多了首頁會變成物件列表頁。 */
+const FEATURED_LIMIT = 3;
+
 export default async function HomePage() {
   /* 案例牆撈不到資料時，首頁其他部分要照常出現 ——
      門面頁不能因為資料庫連線問題就整頁 500。 */
@@ -324,6 +334,15 @@ export default async function HomePage() {
     soldCases = [];
   }
   const hasCases = soldCases.length > 0;
+
+  /* 在售物件精選。跟成交案例一樣：撈不到就當作沒有，不讓首頁掛掉。 */
+  let featured: PropertyRow[] = [];
+  try {
+    featured = await listPublicProperties({ limit: FEATURED_LIMIT });
+  } catch {
+    featured = [];
+  }
+  const hasFeatured = featured.length > 0;
 
   return (
     <main className={styles.page}>
@@ -412,8 +431,46 @@ export default async function HomePage() {
             {OWNER.name}
             <span>（{OWNER.brandPersona}）・{OWNER.title}</span>
           </p>
+
+          {/* 2026-09-01 加上完整介紹的入口。首頁這塊刻意只放三段，
+              想看更多的客戶才點進去，不要把履歷全部倒在首頁。 */}
+          <div className={styles.aboutMore}>
+            <Link href="/about" className={`${styles.btn} ${styles.btnOutline}`}>
+              更多關於我
+            </Link>
+          </div>
         </div>
       </section>
+
+      {/* ---------- 2.5 物件精選 ----------
+           2026-09-01 新增。位置在「關於我」之後、「服務區域」之前 ——
+           客戶認識了人，下一個問題就是「你手上有什麼」，這時候給物件最順。
+           ⚠️ 這是插入的新區塊，既有八塊的相對順序沒有動過。
+           一筆在售物件都沒有時整塊不渲染（跟成交案例同一個原則：
+           不要在正式站露出空殼）。 */}
+      {hasFeatured ? (
+        <section id="listings" className={styles.section} aria-labelledby="listings-title">
+          <div className={styles.sectionInner}>
+            <p className={styles.eyebrow}>LISTINGS</p>
+            <h2 id="listings-title" className={styles.title}>本月精選好案</h2>
+            <p className={styles.sub}>
+              台中海線目前主打的物件。看中意的直接約時間，我陪您一間一間看清楚再決定。
+            </p>
+
+            <div className={styles.featuredGrid}>
+              {featured.map((p) => (
+                <PropertyCard key={p.id} data={toPropertyCardData(p)} />
+              ))}
+            </div>
+
+            <div className={styles.featuredMore}>
+              <Link href="/property" className={`${styles.btn} ${styles.btnDark}`}>
+                看全部好案
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {/* ---------- 3. 服務區域 ---------- */}
       <section id="service-area" className={styles.section} aria-labelledby="service-area-title">

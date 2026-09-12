@@ -1,0 +1,297 @@
+/* ============================================================================
+ * 物件卡片樣式（2026-09-01）
+ *
+ * 首頁「物件精選」與 /property 列表共用。
+ * 色票一律吃 globals.css :root 的 --brand-*，這裡不自己發明顏色
+ * （無障礙對比度的鐵律寫在 globals.css 檔頭，改色前先看那邊）。
+ *
+ * 版面前提：入口大多是手機（LINE 收到連結點開），所以手機優先，
+ * 桌機只是把欄位加寬。照片框固定 4:3，照片再怎麼參差不齊，
+ * 一整排卡片的高度還是對得齊。
+ * ========================================================================== */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.card:hover {
+  box-shadow: 0 14px 34px rgba(35, 24, 21, .12);
+  transform: translateY(-3px);
+}
+
+/* ---------- 照片區 ---------- */
+.cover {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+/* 所有照片疊在同一格，只有目前這張是不透明的。
+   用 opacity 切換而不是 display:none —— 換圖時不會閃一下白底。 */
+.photo,
+.photoOn {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.photoOn { opacity: 1; }
+
+.noPhoto {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: .95rem;
+  letter-spacing: .04em;
+}
+
+/* 「1/3」計數器 */
+.counter {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(22, 16, 14, .68);
+  color: var(--white);
+  font-size: .78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+
+.badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 11px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-primary);
+  color: var(--cta-text);
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+/* 左右翻頁鈕。桌機平常半透明，滑到卡片上才變清楚；
+   手機沒有 hover，所以一律保持看得見。 */
+.navBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .88);
+  color: var(--brand-ink);
+  cursor: pointer;
+  opacity: .55;
+  transition: opacity .15s ease, background-color .15s ease;
+}
+.card:hover .navBtn { opacity: 1; }
+.navBtn:hover { background: var(--white); }
+.navBtn:focus-visible {
+  opacity: 1;
+  outline: 3px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+.navBtn svg { width: 18px; height: 18px; }
+.navPrev { left: 8px; }
+.navNext { right: 8px; }
+
+@media (hover: none) {
+  .navBtn { opacity: .9; }
+}
+
+/* 指示點 */
+.dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+.dot,
+.dotOn {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: rgba(255, 255, 255, .55);
+  box-shadow: 0 0 0 1px rgba(22, 16, 14, .25);
+  transition: background-color .15s ease, width .15s ease;
+}
+.dotOn {
+  width: 18px;
+  border-radius: 999px;
+  background: var(--white);
+}
+.dot:focus-visible,
+.dotOn:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+/* ---------- 內容區 ---------- */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px 18px;
+  flex: 1;
+}
+
+.eyebrow {
+  align-self: flex-start;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--brand-primary-soft);
+  color: var(--brand-primary-deep);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 800;
+  line-height: 1.45;
+  letter-spacing: -.01em;
+  text-wrap: balance;
+}
+.titleLink {
+  color: inherit;
+  text-decoration: none;
+}
+.titleLink:hover { color: var(--brand-primary); }
+.titleLink:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.price {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 800;
+  color: var(--brand-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+
+.meta {
+  margin: 0;
+  font-size: .88rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.highlights {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.highlights li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: .9rem;
+  line-height: 1.6;
+  color: var(--brand-ink);
+}
+.bullet {
+  width: 13px;
+  height: 13px;
+  margin-top: .38em;
+  color: var(--brand-highlight);
+  flex: none;
+}
+
+/* ---------- 三顆按鈕 ---------- */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.actionGhost,
+.actionPrimary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 16px;
+  border-radius: 999px;
+  font-size: .95rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+
+.actionGhost {
+  border: 1px solid var(--border-soft);
+  background: var(--white);
+  color: var(--brand-ink);
+}
+.actionGhost:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+.actionPrimary {
+  border: 1px solid var(--brand-surface);
+  background: var(--brand-surface);
+  color: var(--white);
+}
+.actionPrimary:hover {
+  background: var(--brand-surface-deep);
+  border-color: var(--brand-surface-deep);
+}
+
+.actionGhost:focus-visible,
+.actionPrimary:focus-visible {
+  outline: 3px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .card:hover,
+  .photo,
+  .photoOn,
+  .navBtn,
+  .dot,
+  .dotOn,
+  .actionGhost,
+  .actionPrimary {
+    transition: none;
+    transform: none;
+  }
+}

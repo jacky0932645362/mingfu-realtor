@@ -230,9 +230,10 @@ export default async function PropertyPublicPage({
           </section>
         ) : null}
 
-        {/* ---- 影片 ---- */}
+        {/* ---- 影片 ----
+             id="video" 是給列表卡片上那顆「影片賞析」跳過來用的錨點，不要拿掉。 */}
         {videos.length > 0 ? (
-          <section className={styles.section}>
+          <section id="video" className={styles.section}>
             <h2 className={styles.sectionTitle}>影片看屋</h2>
             <div className={styles.videoList}>
               {videos.map((v, i) => (
