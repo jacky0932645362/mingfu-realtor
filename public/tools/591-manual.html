@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>物件上架助手手冊</title>
+<meta name="robots" content="noindex, nofollow" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC&family=Noto+Serif+TC:wght@500;700;900&family=Noto+Sans+TC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --paper:#FBF6F4;
+    --surface:#FFFFFF;
+    --ink:#231815;
+    --ink-soft:#5c4c47;
+    --line:#E8DAD6;
+    --accent-fill:#E00000;   /* 固定：白字底色用，兩種主題色值不變 */
+    --accent-text:#B50000;   /* 淺色底上的紅字 */
+    --rose:#EE828A;
+    --rose-tint:#FBEAEC;
+    --rose-tint-line:#F3C9CD;
+    --amber-text:#8A5200;
+    --amber-bg:#F7E6C8;
+    --amber-line:#E7CE9C;
+    --good-text:#1F8F57;
+    --good-dot:#2BB673;
+    --line-brand:#04893E;
+    --mock-bg:#F1F3F4;
+    --mock-surface:#FFFFFF;
+    --mock-border:#D6D9DC;
+    --mock-ink:#3C4043;
+    --mock-blue:#1A73E8;
+    --focus:#B50000;
+    --shadow: 0 1px 2px rgba(35,24,21,.06), 0 6px 20px -8px rgba(35,24,21,.12);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#1A1210;
+      --surface:#241A17;
+      --ink:#F3E9E6;
+      --ink-soft:#C9B6B0;
+      --line:#3A2C27;
+      --accent-text:#FF6B5C;
+      --rose:#F2A0A6;
+      --rose-tint:#34211F;
+      --rose-tint-line:#4A2E2C;
+      --amber-text:#F0B868;
+      --amber-bg:#3B2E18;
+      --amber-line:#5A4726;
+      --good-text:#4CD696;
+      --good-dot:#3BD68F;
+      --line-brand:#2FCB7A;
+      --focus:#FF8A7A;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -10px rgba(0,0,0,.5);
+    }
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto;}
+    *{animation-duration:.01ms !important; transition-duration:.01ms !important;}
+  }
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font:16px/1.85 "Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--rose-tint-line); color:var(--ink); }
+  a{ color:var(--accent-text); }
+  a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible{
+    outline:2px solid var(--focus); outline-offset:3px; border-radius:4px;
+  }
+  h1,h2,h3{ font-family:"LXGW WenKai TC","Noto Serif TC",serif; text-wrap:balance; margin:0; color:var(--ink); }
+  code, .mono{ font-family:"JetBrains Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+  code{ background:var(--rose-tint); border:1px solid var(--rose-tint-line); border-radius:5px; padding:.08em .4em; font-size:.88em; color:var(--accent-text); }
+
+  .page{
+    display:grid;
+    grid-template-columns:220px minmax(0,720px);
+    gap:56px;
+    justify-content:center;
+    max-width:1080px;
+    margin:0 auto;
+    padding:56px 24px 96px;
+  }
+  @media (max-width:920px){
+    .page{ grid-template-columns:minmax(0,1fr); padding:32px 20px 72px; }
+    .rail{ display:none; }
+  }
+
+  /* ── 側邊目錄 ── */
+  .rail{ position:sticky; top:32px; align-self:start; font-size:.875rem; }
+  .rail-progress{
+    display:flex; justify-content:space-between; align-items:baseline;
+    padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--line);
+    color:var(--ink-soft); letter-spacing:.02em;
+  }
+  .rail-progress-value{ font-family:"JetBrains Mono",monospace; color:var(--accent-text); font-weight:600; }
+  .rail-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
+  .rail-list a{
+    display:block; padding:6px 10px; margin-left:-10px; border-radius:7px;
+    color:var(--ink-soft); text-decoration:none; border-left:2px solid transparent;
+    transition:color .15s, background .15s, border-color .15s;
+  }
+  .rail-list a:hover{ background:var(--surface); color:var(--ink); }
+  .rail-list a.active{ color:var(--accent-text); border-left-color:var(--accent-fill); font-weight:600; background:var(--surface); }
+  .rail-divider{ height:1px; background:var(--line); margin:14px 0; }
+
+  /* ── 封面 ── */
+  .cover{ margin-bottom:8px; }
+  .eyebrow{
+    font-size:.8125rem; font-weight:600; letter-spacing:.08em; color:var(--accent-text);
+    text-transform:uppercase; margin:0 0 14px;
+  }
+  h1{ font-size:clamp(2rem,4.4vw,2.85rem); line-height:1.2; display:flex; flex-wrap:wrap; align-items:baseline; gap:.4em; margin-bottom:16px; }
+  .h1-sub{ font-family:"Noto Sans TC",sans-serif; font-weight:500; font-size:.42em; color:var(--ink-soft); letter-spacing:.04em; }
+  .cover-sub{ font-size:1.0625rem; color:var(--ink-soft); max-width:56ch; margin:0 0 26px; }
+  .cover-sub strong{ color:var(--ink); }
+  .cover-meta{
+    display:flex; flex-wrap:wrap; gap:22px 32px; margin:0; padding:18px 0;
+    border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+  }
+  .cover-meta > div{ display:flex; flex-direction:column; gap:2px; }
+  .cover-meta dt{ font-size:.75rem; color:var(--ink-soft); letter-spacing:.04em; }
+  .cover-meta dd{ margin:0; font-weight:600; }
+
+  /* ── 兩欄：會/不會做的事 ── */
+  .split{ display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:22px 0 4px; }
+  @media (max-width:640px){ .split{ grid-template-columns:1fr; } }
+  .split-card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:20px 22px; box-shadow:var(--shadow); }
+  .split-card h3{ font-size:1.0625rem; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+  .split-card.do h3::before{ content:""; width:9px; height:9px; border-radius:50%; background:var(--good-dot); flex:none; }
+  .split-card.dont h3::before{ content:""; width:9px; height:9px; border-radius:50%; background:var(--accent-fill); flex:none; }
+  .split-card ul{ margin:0; padding-left:1.2em; display:flex; flex-direction:column; gap:9px; color:var(--ink-soft); }
+  .split-card li::marker{ color:var(--ink-soft); }
+  .split-card li strong{ color:var(--ink); font-weight:600; }
+
+  /* ── 步驟區塊 ── */
+  section.step{ margin:64px 0 0; scroll-margin-top:28px; }
+  section.step:first-of-type{ margin-top:48px; }
+  .step-head{ display:flex; align-items:flex-start; gap:16px; margin-bottom:18px; }
+  .step-num{
+    flex:none; width:38px; height:38px; border-radius:11px; background:var(--accent-fill); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-family:"LXGW WenKai TC","Noto Serif TC",serif;
+    font-size:1.15rem; font-weight:700;
+  }
+  .step-head h2{ font-size:1.4rem; display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .step-kicker{ margin:3px 0 0; font-size:.8125rem; color:var(--ink-soft); }
+  .onscreen-chip{
+    font-family:"Noto Sans TC",sans-serif; font-size:.72rem; font-weight:600; letter-spacing:.02em;
+    color:var(--ink-soft); border:1px solid var(--line); border-radius:999px; padding:2px 10px 3px;
+    white-space:nowrap;
+  }
+  .step-list, .step-body{ margin:0 0 16px; padding-left:1.3em; color:var(--ink); }
+  .step-list{ display:flex; flex-direction:column; gap:12px; }
+  .step-list > li::marker{ color:var(--accent-text); font-weight:700; }
+  .step-body p{ margin:0 0 12px; }
+
+  .callout{ display:flex; gap:12px; border-radius:12px; padding:14px 16px; margin:16px 0; border:1px solid; font-size:.9375rem; }
+  .callout.warn{ background:var(--amber-bg); border-color:var(--amber-line); color:var(--amber-text); }
+  .callout.note{ background:var(--rose-tint); border-color:var(--rose-tint-line); color:var(--ink); }
+  .callout::before{ flex:none; font-size:1.05rem; line-height:1.5; }
+  .callout.warn::before{ content:"⚠"; }
+  .callout.note::before{ content:"ℹ"; }
+
+  .check{
+    display:inline-flex; align-items:center; gap:9px; cursor:pointer; user-select:none;
+    font-size:.9375rem; color:var(--ink-soft); margin-top:6px;
+  }
+  .check input{
+    appearance:none; width:19px; height:19px; border-radius:6px; border:1.5px solid var(--line);
+    background:var(--surface); display:grid; place-content:center; margin:0; flex:none; cursor:pointer;
+  }
+  .check input::before{
+    content:""; width:11px; height:11px; transform:scale(0); transition:transform .12s ease-in;
+    background:var(--accent-fill); clip-path:polygon(14% 44%,0 63%,39% 100%,100% 16%,84% 0,37% 68%);
+  }
+  .check input:checked{ border-color:var(--accent-fill); }
+  .check input:checked::before{ transform:scale(1); }
+  .check input:checked ~ span{ color:var(--ink); }
+
+  /* ── Chrome 操作示意 ── */
+  .mock{ background:var(--mock-bg); border:1px solid var(--mock-border); border-radius:14px; padding:16px; margin:18px 0; }
+  .mock-addr{
+    display:flex; align-items:center; gap:8px; background:var(--mock-surface); border:1px solid var(--mock-border);
+    border-radius:8px; padding:7px 12px; font-family:"JetBrains Mono",monospace; font-size:.8125rem; color:var(--mock-ink);
+    margin-bottom:14px;
+  }
+  .mock-addr .dot{ width:7px; height:7px; border-radius:50%; background:#9AA0A6; flex:none; }
+  .mock-row{ display:flex; align-items:center; justify-content:space-between; background:var(--mock-surface); border:1px solid var(--mock-border); border-radius:8px; padding:10px 14px; margin-bottom:8px; font-size:.875rem; color:var(--mock-ink); }
+  .mock-row:last-child{ margin-bottom:0; }
+  .toggle{ width:34px; height:19px; border-radius:999px; background:var(--mock-blue); position:relative; flex:none; }
+  .toggle::after{ content:""; position:absolute; width:14px; height:14px; border-radius:50%; background:#fff; top:2.5px; right:2.5px; }
+  .mock-btn{ display:inline-flex; align-items:center; gap:6px; background:var(--mock-blue); color:#fff; border-radius:6px; padding:6px 12px; font-size:.8125rem; font-weight:600; }
+  .mock-btn.outline{ background:transparent; color:var(--mock-blue); border:1px solid var(--mock-blue); }
+  .mock-folder{ display:flex; align-items:center; gap:8px; background:var(--mock-surface); border:1.5px solid var(--mock-blue); border-radius:7px; padding:8px 12px; font-size:.8125rem; color:var(--mock-ink); }
+  .mock-folder .ic{ font-size:1rem; }
+  .mock-caption{ margin:10px 2px 0; font-size:.8125rem; color:var(--ink-soft); }
+  .pin{ font-size:1rem; }
+
+  /* ── 我的資料欄位表 ── */
+  .field-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin:18px 0; }
+  .field{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow); }
+  .field dt{ font-weight:600; font-size:.9375rem; margin-bottom:4px; }
+  .field dd{ margin:0; font-size:.875rem; color:var(--ink-soft); }
+  .field dd code{ font-size:.82em; }
+
+  /* ── 疑難排解表格 ── */
+  .table-wrap{ overflow-x:auto; margin:18px 0; border:1px solid var(--line); border-radius:14px; }
+  table{ width:100%; border-collapse:collapse; font-size:.9rem; min-width:560px; }
+  thead th{ text-align:left; background:var(--surface); color:var(--ink-soft); font-weight:600; font-size:.78rem; letter-spacing:.04em; padding:12px 16px; border-bottom:1px solid var(--line); }
+  tbody td{ padding:13px 16px; border-bottom:1px solid var(--line); vertical-align:top; }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:nth-child(odd){ background:var(--surface); }
+  td.msg{ color:var(--accent-text); font-weight:600; white-space:nowrap; }
+
+  /* ── FAQ ── */
+  details{ background:var(--surface); border:1px solid var(--line); border-radius:12px; margin-bottom:10px; box-shadow:var(--shadow); }
+  summary{
+    list-style:none; cursor:pointer; padding:15px 44px 15px 18px; font-weight:600; position:relative;
+    display:flex; align-items:center; gap:10px;
+  }
+  summary::-webkit-details-marker{ display:none; }
+  summary::after{
+    content:"+"; position:absolute; right:16px; top:50%; transform:translateY(-50%);
+    font-family:"JetBrains Mono",monospace; font-size:1.1rem; color:var(--ink-soft); transition:transform .15s;
+  }
+  details[open] summary::after{ transform:translateY(-50%) rotate(45deg); }
+  details p{ margin:0; padding:0 18px 17px; color:var(--ink-soft); }
+
+  .contact{
+    display:flex; flex-wrap:wrap; align-items:center; gap:14px 28px; margin-top:22px;
+    background:var(--ink); color:var(--paper); border-radius:16px; padding:22px 26px;
+  }
+  .contact strong{ font-family:"LXGW WenKai TC","Noto Serif TC",serif; font-size:1.15rem; color:var(--paper); }
+  .contact .who{ color:var(--rose); font-size:.875rem; }
+  .contact .sep{ opacity:.4; }
+  .contact a{ color:var(--paper); text-decoration:underline; text-decoration-color:var(--rose); text-underline-offset:3px; }
+
+  footer.colophon{
+    margin-top:72px; padding-top:22px; border-top:1px solid var(--line);
+    color:var(--ink-soft); font-size:.8125rem; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <nav class="rail" aria-label="手冊目錄">
+    <div class="rail-progress">
+      <span>安裝進度</span>
+      <span class="rail-progress-value" id="progress-count">0 / 3</span>
+    </div>
+    <ol class="rail-list">
+      <li><a href="#s1">這是什麼</a></li>
+      <li><a href="#s2">安裝外掛</a></li>
+      <li><a href="#s3">授權碼</a></li>
+      <li><a href="#s4">我的資料</a></li>
+      <li><a href="#s5">貼上型錄</a></li>
+      <li><a href="#s6">核對欄位</a></li>
+      <li><a href="#s7">標題與描述</a></li>
+      <li><a href="#s8">照片</a></li>
+      <li><a href="#s9">上架</a></li>
+    </ol>
+    <div class="rail-divider"></div>
+    <ol class="rail-list">
+      <li><a href="#s10">疑難排解</a></li>
+      <li><a href="#s11">常見問題</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <header class="cover">
+      <p class="eyebrow">太平洋房屋 梧棲新市鎮加盟店・內部工具</p>
+      <h1>物件上架助手 <span class="h1-sub">操作手冊</span></h1>
+      <p class="cover-sub">貼上愛屋型錄的文字，外掛自動把地址、格局、坪數、樓層、描述、照片填進 591 與樂屋網的刊登表單。<strong>「保存資料」「上架」「立即支付」永遠由你自己按。</strong></p>
+      <dl class="cover-meta">
+        <div><dt>版本</dt><dd class="mono">v0.2.2</dd></div>
+        <div><dt>適用平台</dt><dd>591・樂屋網（出售／出租）</dd></div>
+        <div><dt>提供者</dt><dd>蕭茗馥</dd></div>
+      </dl>
+    </header>
+
+    <section id="s1" class="step">
+      <div class="step-head">
+        <span class="step-num">1</span>
+        <div>
+          <h2>這是什麼工具</h2>
+          <p class="step-kicker">花 2 分鐘看完，後面照著做就好</p>
+        </div>
+      </div>
+      <div class="split">
+        <div class="split-card do">
+          <h3>會幫你做的事</h3>
+          <ul>
+            <li>讀懂貼進去的<strong>愛屋型錄</strong>文字，自動拆成地址、格局、坪數、樓層、車位等欄位</li>
+            <li>開一個 591 或樂屋網的刊登表單分頁，<strong>自動一格一格填</strong></li>
+            <li>系統上要用選的、或需要人判斷的欄位，<strong>用紅底標出來</strong>提醒你補</li>
+            <li>照片連結也一起帶過去</li>
+          </ul>
+        </div>
+        <div class="split-card dont">
+          <h3>不會幫你做的事</h3>
+          <ul>
+            <li>不會按「保存資料」「上架」「立即支付」——<strong>一定要你自己確認後按下去</strong></li>
+            <li>不會存你的 591／樂屋帳號密碼，也不會幫你登入</li>
+            <li>不會把物件內容傳到 591／樂屋以外的地方（詳見「常見問題」）</li>
+            <li>不會判斷裝潢好壞、家具新舊、或型錄沒有的路名——這幾格<strong>故意留給你</strong></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="s2" class="step">
+      <div class="step-head">
+        <span class="step-num">2</span>
+        <div>
+          <h2>安裝外掛</h2>
+          <p class="step-kicker">只需要做一次</p>
+        </div>
+      </div>
+      <ol class="step-list">
+        <li>跟茗馥拿整個 <code>591-extension</code> 資料夾（隨授權碼一起收到），存到電腦裡固定的位置——外掛是直接讀這個資料夾，之後不要搬移或刪除。</li>
+        <li>網址列輸入 <code>chrome://extensions</code>，按 Enter。</li>
+        <li>右上角把「開發人員模式」打開。
+          <div class="mock">
+            <div class="mock-addr"><span class="dot"></span>chrome://extensions</div>
+            <div class="mock-row"><span>開發人員模式</span><span class="toggle"></span></div>
+          </div>
+        </li>
+        <li>按左上角「載入未封裝項目」，選<strong>剛剛那個 <code>591-extension</code> 資料夾本身</strong>（不是資料夾裡面某一個檔案）。
+          <div class="mock">
+            <div class="mock-row"><span class="mock-btn">載入未封裝項目</span><span class="mock-btn outline">重新整理</span></div>
+            <div class="mock-folder"><span class="ic">📁</span>591-extension<span style="margin-left:auto;color:var(--mock-blue);font-weight:600;">選擇資料夾</span></div>
+          </div>
+        </li>
+        <li>列表出現「物件上架助手」卡片就是裝好了。按工具列的拼圖圖示 → 把「物件上架助手」後面的圖釘按下去，固定顯示在工具列。
+          <div class="mock">
+            <div class="mock-row"><span>🧩 拼圖選單</span><span class="pin">📌 物件上架助手</span></div>
+          </div>
+        </li>
+      </ol>
+      <div class="callout note">外掛改版時（茗馥會通知），把新檔案蓋掉舊資料夾內容後，回到 <code>chrome://extensions</code> 按「物件上架助手」卡片上的 ↻ 重新整理即可，不用重新「載入未封裝項目」。</div>
+      <div class="callout warn">操作頁只能點<strong>工具列上的圖示</strong>打開。如果從資料夾裡直接雙擊 <code>app.html</code>，畫面會出現警示、按鈕全部按不動。</div>
+      <label class="check"><input type="checkbox" class="step-check" data-step="install"><span>已完成安裝</span></label>
+    </section>
+
+    <section id="s3" class="step">
+      <div class="step-head">
+        <span class="step-num">3</span>
+        <div>
+          <h2>輸入授權碼</h2>
+          <p class="step-kicker">沒有有效授權碼，「解析」「上架」都按不動</p>
+        </div>
+      </div>
+      <div class="step-body">
+        <p>跟茗馥要一組授權碼，格式類似 <code class="mono">MF-XXXX-XXXX-XXXX</code>。每組授權碼能同時使用的電腦數量有上限，<strong>不要自己重新輸入到更多台電腦</strong>，額滿系統會直接擋下來。</p>
+        <p>點工具列圖示打開操作頁 → 右上角「⚙ 我的資料」→ 最上面「授權碼」欄貼上 → 按「儲存」。存好後上面會顯示授權狀態。</p>
+      </div>
+      <label class="check"><input type="checkbox" class="step-check" data-step="license"><span>已輸入授權碼</span></label>
+    </section>
+
+    <section id="s4" class="step">
+      <div class="step-head">
+        <span class="step-num">4</span>
+        <div>
+          <h2>填一次「我的資料」</h2>
+          <p class="step-kicker">存在你自己的 Chrome，不會跟同事共用</p>
+        </div>
+      </div>
+      <p class="step-body" style="padding-left:0;">同樣在「⚙ 我的資料」裡，填一次自己的聯絡資訊，之後每一戶都會自動帶入。</p>
+      <div class="field-grid">
+        <div class="field"><dt>姓名／手機／LINE ID</dt><dd>填進 591 聯絡人欄位</dd></div>
+        <div class="field"><dt>經紀業名稱</dt><dd>文案落款用，例：太平洋房屋 ○○加盟店</dd></div>
+        <div class="field"><dt>委託書預設</dt><dd>有簽訂／無簽訂</dd></div>
+        <div class="field"><dt>描述抬頭</dt><dd>現況描述最前面固定加的一句，例：☆ 物件特色</dd></div>
+        <div class="field"><dt>固定尾段</dt><dd>描述最後固定接的一段，可用 <code>{{name}}</code> <code>{{phone}}</code> <code>{{line}}</code> <code>{{company}}</code> 自動代換</dd></div>
+      </div>
+      <label class="check"><input type="checkbox" class="step-check" data-step="profile"><span>已填我的資料</span></label>
+    </section>
+
+    <section id="s5" class="step">
+      <div class="step-head">
+        <span class="step-num">5</span>
+        <div>
+          <h2>貼上型錄 <span class="onscreen-chip">畫面上的 ①</span></h2>
+        </div>
+      </div>
+      <div class="step-body" style="padding-left:0;">
+        <p>打開愛屋型錄頁，把地址旁邊的「顯示」點開 → <code>Ctrl+A</code> 全選 → <code>Ctrl+C</code> 複製整頁，貼進最上面的大輸入框，照片連結會一起帶進來。</p>
+        <p>也可以貼自己手打的物件文字：第一行標題／地址：／售價：或租金：／格局：／坪數：／樓層：／每行一個 ✨ 特色。貼好按「解析」。</p>
+      </div>
+    </section>
+
+    <section id="s6" class="step">
+      <div class="step-head">
+        <span class="step-num">6</span>
+        <div>
+          <h2>核對每一格 <span class="onscreen-chip">畫面上的 ②③</span></h2>
+        </div>
+      </div>
+      <div class="step-body" style="padding-left:0;">
+        <p><span style="background:var(--rose-tint);color:var(--accent-text);padding:1px 8px;border-radius:5px;font-weight:600;">紅底</span> ＝ 型錄裡沒有這個資料，你自己補；<span style="color:var(--good-text);font-weight:600;">綠字</span> ＝ 591 上這格是用選的，外掛已經幫你選好，要改就直接點開重選。每一格都能改，改了就照你改的填。</p>
+      </div>
+      <div class="callout note">
+        以下三種紅底是<strong>系統故意留白</strong>，不是抓漏了——這些真的需要人看照片、實際判斷才準：<br>
+        ① 裝潢程度　② 提供設備／家具　③ 型錄有寫、但 591 資料庫查無這條路名的街道
+      </div>
+    </section>
+
+    <section id="s7" class="step">
+      <div class="step-head">
+        <span class="step-num">7</span>
+        <div>
+          <h2>標題與描述 <span class="onscreen-chip">畫面上的 ④</span></h2>
+        </div>
+      </div>
+      <p class="step-body" style="padding-left:0;">系統會給一個建議標題（6～30 字），按「套用」即可直接使用，也可以自己改。描述欄位是純文字，抓進來的內容可以直接在框裡增刪。</p>
+    </section>
+
+    <section id="s8" class="step">
+      <div class="step-head">
+        <span class="step-num">8</span>
+        <div>
+          <h2>照片 <span class="onscreen-chip">畫面上的 ⑤</span></h2>
+        </div>
+      </div>
+      <p class="step-body" style="padding-left:0;">貼型錄時通常會自動帶入照片來源；也可以自己貼型錄的「更多照片」連結，或直接貼照片網址。</p>
+    </section>
+
+    <section id="s9" class="step">
+      <div class="step-head">
+        <span class="step-num">9</span>
+        <div>
+          <h2>上架到 591／樂屋 <span class="onscreen-chip">畫面上的 ⑥</span></h2>
+        </div>
+      </div>
+      <div class="step-body" style="padding-left:0;">
+        <p>紅底都補完後，按「🚀 上架到 591」或「🏠 上架到樂屋」——兩個平台是分開的兩顆按鈕，要上哪個平台按哪一顆，記得<strong>先在 Chrome 用自己的帳號登入</strong>該平台。</p>
+        <p>會另外開一個分頁自動把表單填好，右下角小面板即時報進度、最後列出還缺什麼。填完由上到下自己核對一次，確認沒問題再按 591 的「保存資料，下一步」、或樂屋的「庫存」／「上架」——<strong>這一下永遠是你自己按</strong>。</p>
+        <p>每次上架前，外掛會先確認授權碼還有效；到期或被停用會直接擋下來並告訴你原因（見下一節）。</p>
+      </div>
+    </section>
+
+    <section id="s10" class="step">
+      <div class="step-head">
+        <span class="step-num">10</span>
+        <div>
+          <h2>疑難排解</h2>
+          <p class="step-kicker">畫面上出現的訊息，對照這裡</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:30%">看到的訊息</th><th>代表什麼</th><th>怎麼辦</th></tr></thead>
+          <tbody>
+            <tr><td class="msg">還沒填授權碼</td><td>授權碼欄位是空的</td><td>到「⚙ 我的資料」貼上授權碼、按儲存</td></tr>
+            <tr><td class="msg">授權碼不對</td><td>打錯字或少字元</td><td>跟茗馥核對授權碼</td></tr>
+            <tr><td class="msg">這組授權碼已被停用</td><td>該授權碼被關閉了</td><td>跟茗馥確認狀況</td></tr>
+            <tr><td class="msg">授權已於 ×××× 到期</td><td>授權有效期限已過</td><td>請茗馥延長效期</td></tr>
+            <tr><td class="msg">能用的電腦數已達上限</td><td>同一組碼裝的電腦數到頂了</td><td>跟茗馥說一聲調高上限</td></tr>
+            <tr><td class="msg">連不上驗證伺服器</td><td>網路斷線或伺服器暫時連不上</td><td>檢查網路再試；3 天內驗證成功過，離線仍可先用</td></tr>
+            <tr><td class="msg">驗證伺服器暫時有問題</td><td>伺服器端短暫異常</td><td>等幾分鐘再試</td></tr>
+            <tr><td class="msg">驗證資料不完整</td><td>外掛版本或格式異常</td><td>到 <code>chrome://extensions</code> 按 ↻ 重新整理外掛</td></tr>
+            <tr><td class="msg">驗證太頻繁</td><td>短時間內驗證次數過多</td><td>等一分鐘再試</td></tr>
+            <tr><td class="msg">路名選不到</td><td>591 資料庫真的沒有這條路，或路名含「X段」</td><td>外掛會自動去掉段別重試一次；還是選不到就手動選最接近的路段</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="s11" class="step">
+      <div class="step-head">
+        <span class="step-num">11</span>
+        <div>
+          <h2>常見問題</h2>
+        </div>
+      </div>
+
+      <details>
+        <summary>這個工具會把我的物件資料傳出去嗎？</summary>
+        <p>不會。物件資料只出現在你自己的 Chrome 分頁裡，填進 591／樂屋的表單。唯一會離開這台電腦的，是「授權碼、這台電腦的安裝編號、外掛版本」——傳到蕭茗馥的驗證伺服器確認授權還有效，<strong>不含物件內容，也不含任何客戶或屋主的姓名電話</strong>。</p>
+      </details>
+      <details>
+        <summary>換電腦或重灌系統，要重新裝一次嗎？</summary>
+        <p>要。每一台電腦第一次使用都會產生一個新的安裝編號，算用掉一個名額。舊電腦不再使用的話，跟茗馥說一聲把名額釋出。</p>
+      </details>
+      <details>
+        <summary>可以跟其他同事共用同一組授權碼嗎？</summary>
+        <p>名額範圍內可以，但同一組碼能同時「在用」的電腦數有上限，超過會被擋下來，需要更多名額請跟茗馥說。</p>
+      </details>
+      <details>
+        <summary>591 或樂屋改版，欄位對不起來了怎麼辦？</summary>
+        <p>截圖回報給茗馥。通常是平台調整了表單版面，外掛需要跟著小改一次。</p>
+      </details>
+
+      <div class="contact">
+        <div><strong>茗馥</strong><br><span class="who">授權碼・名額・使用問題都找她</span></div>
+        <span class="sep">｜</span>
+        <div>📞 <a href="tel:0932645362">0932-645-362</a></div>
+        <span class="sep">｜</span>
+        <div>LINE <a href="#" onclick="return false;">0932645362</a></div>
+      </div>
+    </section>
+
+    <footer class="colophon">
+      <span>物件上架助手 v0.2.2．太平洋房屋 梧棲新市鎮加盟店</span>
+      <span>本手冊隨版本更新，最新版請跟茗馥索取連結</span>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+(function(){
+  var LS_KEY = 'p591-manual-progress-v1';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch (e) { state = {}; }
+  var boxes = document.querySelectorAll('.step-check');
+  var progressEl = document.getElementById('progress-count');
+  function updateProgress(){
+    var done = 0;
+    boxes.forEach(function (b) { if (b.checked) done++; });
+    if (progressEl) progressEl.textContent = done + ' / ' + boxes.length;
+  }
+  boxes.forEach(function (b) {
+    var key = b.dataset.step;
+    try { if (state[key]) b.checked = true; } catch (e) {}
+    b.addEventListener('change', function () {
+      state[key] = b.checked;
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+      updateProgress();
+    });
+  });
+  updateProgress();
+
+  if ('IntersectionObserver' in window) {
+    var links = document.querySelectorAll('.rail-list a');
+    var map = {};
+    links.forEach(function (l) { map[l.getAttribute('href').slice(1)] = l; });
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var link = map[entry.target.id];
+        if (!link || !entry.isIntersecting) return;
+        links.forEach(function (l) { l.classList.remove('active'); });
+        link.classList.add('active');
+      });
+    }, { rootMargin: '-15% 0px -75% 0px' });
+    document.querySelectorAll('main section[id]').forEach(function (s) { io.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>
