@@ -87,33 +87,52 @@ function renderRoomBreakdownRows(rows, subjectRoomCount) {
 }
 
 /**
- * 真正逐筆列出的競品：同社區目前在售的其他物件。
+ * 真正逐筆列出的競品：同社區目前在售的其他物件，照總價由低到高排。
  *
- * 總價／坪數／樓層這三格 591 在清單頁刻意用自訂元件藏起來（見 extract.mjs 的
- * `extractCommunityComps` 註解），這裡故意留白＋一個連去該物件詳情頁的連結，
- * 不是抓漏了——要精確數字，人自己點進去看，那一頁 591 就會顯示。
+ * 「重複刊登」＝同樓層＋同權狀坪＋同總價（見 _shared.mjs 的 dedupeComps）：同一戶被
+ * 好幾家仲介各刊一筆是 591 的常態，不標出來的話「在售 N 間」會被高估。同一組用同一個
+ * 字母標，排序後自然會排在一起。
+ *
+ * 刻意沒有經紀人／公司欄——本人 2026-09-14 拍板，內部版也不秀其他仲介的名字。
  */
 function renderCompsTable(comps, subjectUrl) {
-  if (!comps?.length) return `<p class="muted">社區在售清單頁抓不到個別物件（591 可能改版了）。</p>`;
+  if (!comps?.length) return `<p class="muted">搜尋頁抓不到屬於本社區的在售物件（591 可能改版了，或社區名對不上）。</p>`;
+  const sorted = [...comps].sort((a, b) => (a.totalPrice ?? Infinity) - (b.totalPrice ?? Infinity));
   return `
     <table class="data-table">
-      <thead><tr><th>物件</th><th>格局</th><th>單價</th><th>標籤</th><th>仲介</th></tr></thead>
+      <thead><tr><th>物件</th><th>格局</th><th>樓層</th><th>權狀</th><th>總價</th><th>單價</th><th>標籤</th></tr></thead>
       <tbody>
-        ${comps
+        ${sorted
           .map((c) => {
             const isSubject = subjectUrl && c.url === subjectUrl;
+            const dup = c.dupGroup ? `<span class="chip chip-dup" title="同樓層、同權狀坪、同總價，視為同一戶">重複${escapeHtml(c.dupGroup)}×${c.dupCount}</span>` : "";
             return `<tr class="${isSubject ? "is-subject" : ""}">
-              <td><a href="${c.url || "#"}" target="_blank" rel="noopener">${escapeHtml(c.title || "（無標題）")}</a>${isSubject ? '<span class="chip">本件</span>' : ""}</td>
+              <td><a href="${c.url || "#"}" target="_blank" rel="noopener">${escapeHtml(c.title || "（無標題）")}</a>${isSubject ? '<span class="chip">本件</span>' : ""}${dup}</td>
               <td>${escapeHtml(c.layout || "—")}</td>
-              <td>${escapeHtml(c.unitPrice || "—")}</td>
+              <td>${escapeHtml(c.floor || "—")}</td>
+              <td>${c.sizePing != null ? `${c.sizePing}坪` : "—"}</td>
+              <td class="num-cell">${c.totalPrice != null ? `${fmtMoney(c.totalPrice)}萬` : "—"}${c.priceDrop ? `<span class="chip chip-drop">${escapeHtml(c.priceDrop)}</span>` : ""}</td>
+              <td>${c.unitPrice != null ? `${c.unitPrice}萬/坪` : "—"}</td>
               <td>${c.tags?.length ? escapeHtml(c.tags.join("・")) : "—"}</td>
-              <td>${escapeHtml(c.agent || "—")}</td>
             </tr>`;
           })
           .join("")}
       </tbody>
     </table>
-    <p class="muted" style="margin-top:6px;">總價／坪數／樓層 591 在這個清單頁沒有顯示，點物件連結進去看該頁的完整資訊。</p>`;
+    <p class="muted" style="margin-top:6px;">
+      總價為 591 刊登價（含車位者已標示於 591 頁面）。單價＝總價 ÷ 含車位權狀坪，跟本件的 591 單價同一套算法；
+      實價登錄的單價是扣掉車位後算的，兩邊數字不能直接互比。「重複」＝同樓層、同權狀坪、同總價，視為同一戶被多家仲介刊登。
+    </p>`;
+}
+
+/** 競品表的標題列：講清楚這張表涵蓋了多少、去重後剩多少，不讓人以為看到的就是全部。 */
+function compsHeading(community) {
+  const m = community.compsMeta;
+  const shown = community.comps?.length ?? 0;
+  if (!m) return `同社區在售競品（${shown} 筆）`;
+  const parts = [`591 搜尋找到 ${m.foundCount ?? "—"} 筆`, `頁面顯示 ${m.renderedCount} 筆`, `屬本社區 ${m.matchedCount} 筆`];
+  if (m.dupGroupCount > 0) parts.push(`去重後 ${m.uniqueCount} 戶（${m.dupGroupCount} 組重複刊登）`);
+  return `同社區在售競品（${parts.join("，")}）`;
 }
 
 function renderDealRows(deals) {
@@ -210,7 +229,10 @@ export function renderReport(data, owner) {
   .data-table tr.is-subject td { background: var(--surface-2); font-weight: 700; }
   .data-table a { color: var(--brand); text-decoration: none; }
   .data-table a:hover { text-decoration: underline; }
-  .chip { display: inline-block; margin-left: 6px; font-size: 11px; background: var(--brand); color: var(--brand-ink); border-radius: 999px; padding: 1px 8px; font-weight: 600; }
+  .chip { display: inline-block; margin-left: 6px; font-size: 11px; background: var(--brand); color: var(--brand-ink); border-radius: 999px; padding: 1px 8px; font-weight: 600; white-space: nowrap; }
+  .chip-dup { background: var(--neutral-bg); color: var(--neutral); border: 1px solid var(--neutral); }
+  .chip-drop { background: var(--low-bg); color: var(--low); }
+  .num-cell { white-space: nowrap; }
   .muted { color: var(--ink-3); font-size: 13px; }
   .links { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; margin-top: 6px; }
   .links a { color: var(--ink-2); }
@@ -270,6 +292,7 @@ export function renderReport(data, owner) {
       <div class="stat-pill"><div class="num">${community.priceDroppedCount ?? "—"}</div><div class="label">已降價</div></div>
       <div class="stat-pill"><div class="num">${community.avgDealUnitPrice ? `${community.avgDealUnitPrice}萬` : "—"}</div><div class="label">${escapeHtml(community.avgDealRoomType || "")}成交均價/坪</div></div>
     </div>
+    <p class="muted" style="margin:-10px 0 16px;">「目前在售」是 591 社區頁的刊登筆數，同一戶常被多家仲介各刊一筆，實際戶數會少於這個數字（下面競品表已標出重複）。</p>
 
     ${
       positioning
@@ -280,9 +303,7 @@ export function renderReport(data, owner) {
         : `<p class="muted">本件房型與社區成交均價的房型對不上，或社區資料不足，這裡先不算差距。</p>`
     }
 
-    <h3 style="font-size:13px;color:var(--ink-3);margin:18px 0 8px;">
-      同社區在售競品（頁面顯示前 ${community.comps?.length ?? 0} 筆，社區共 ${community.onSaleCount ?? "—"} 筆在售）
-    </h3>
+    <h3 style="font-size:13px;color:var(--ink-3);margin:18px 0 8px;">${compsHeading(community)}</h3>
     ${renderCompsTable(community.comps, data.sourceUrl)}
 
     <h3 style="font-size:13px;color:var(--ink-3);margin:18px 0 8px;">在售房型分布（社區整體統計）</h3>
@@ -292,7 +313,8 @@ export function renderReport(data, owner) {
     ${renderDealRows(community.recentDeals)}
 
     <p class="links no-print">
-      <a href="${community.onSaleListUrl || "#"}" target="_blank" rel="noopener">→ 591 看全部在售物件</a>
+      ${community.compsMeta?.searchUrl ? `<a href="${community.compsMeta.searchUrl}" target="_blank" rel="noopener">→ 591 搜尋本社區在售（含總價）</a>` : ""}
+      <a href="${community.onSaleListUrl || "#"}" target="_blank" rel="noopener">→ 591 社區頁在售清單</a>
       <a href="${community.dealListUrl || "#"}" target="_blank" rel="noopener">→ 591 看全部實價登錄</a>
       <a href="${data.sourceUrl}" target="_blank" rel="noopener">→ 回原始物件頁</a>
     </p>

@@ -1,0 +1,142 @@
+<!--
+  591 主站關鍵字搜尋頁（sale.591.com.tw/?region=8&keywords=聯悅臻）的簡化樣本，
+  供 test-extract-logic.mjs 離線測試用。卡片結構是 2026-09-14 從真實頁面逐字保留的
+  （.ware-item / .ware-item__attr / .ware-item__price-value …），文字內容取自同一頁。
+
+  四張卡片：
+    1、2：同樓層 13F、同權狀 49.87 坪、同總價 1,128 萬，標題與仲介不同 → 應判為同一戶重複刊登
+    3：另一戶（16F、39.3 坪、888 萬）
+    4：「依您的偏好推薦」混進來的別區物件（大里區）→ 社區名與地址都對不上，應被過濾掉
+  另外有一張建案廣告卡（沒有 /detail/ 連結）也應被略過。
+-->
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>台中市買房 | 中古屋買賣房屋出售 - 591售屋網</title></head>
+<body>
+<div class="list-header">已為你找到145間房屋</div>
+<div class="ware-list-wrap">
+
+  <div class="ware-item ware-item--project">
+    <div class="ware-item__content">
+      <div class="ware-item__header"><a href="https://newhouse.591.com.tw/12345" title="睦唐與樹">睦唐與樹</a></div>
+      <div class="ware-item__attrs"><span class="ware-item__attr">住宅大樓</span><span class="ware-item__attr">2~3房</span></div>
+    </div>
+    <div class="ware-item__price-section"><div class="ware-item__price"><em><div class="ware-item__price-value">1,198</div></em><span>萬</span></div></div>
+  </div>
+
+  <div class="ware-item">
+    <div class="ware-item__media"></div>
+    <div class="ware-item__content">
+      <div class="ware-item__header"><a href="https://sale.591.com.tw/home/house/detail/2/20610001.html?itm_source=sale&amp;itm_medium=list" title="海創🌊-🍎聯悅臻朝南朝外最便宜三房配B1車位🍎聯悦臻">海創🌊-🍎聯悅臻朝南朝外最便宜三房配B1車位🍎聯悦臻</a></div>
+      <div class="ware-item__attrs">
+        <i class="ware-item__icon ware-item__icon--house"></i>
+        <span class="ware-item__attr">電梯大樓</span>
+        <span class="ware-item__attr">3房2廳2衛</span>
+        <span class="ware-item__attr">權狀49.87坪</span>
+        <span class="ware-item__attr">主建24.55坪</span>
+        <span class="ware-item__attr">1年</span>
+        <span class="ware-item__attr">13F/24F</span>
+      </div>
+      <div class="ware-item__location">
+        <span class="ware-item__community"><span>聯悦臻</span></span>
+        <span class="ware-item__section">梧棲區-</span>
+        <span class="ware-item__address">臨港路四段</span>
+      </div>
+      <div class="user-info"><span class="user-info__name">仲介袁志榮</span><span class="user-info__browse">61人瀏覽</span></div>
+      <div class="tags-row">
+        <div class="tags-row__item tags-row__item--copilot"> AI即時回覆 </div>
+        <div class="tags-row__item">含車位</div>
+      </div>
+    </div>
+    <div class="ware-item__collect"></div>
+    <div class="ware-item__price-section" title="較之前價格下降了5.8%">
+      <div class="ware-item__price-down"><i class="ware-item__price-down-icon"></i><span>降70萬</span></div>
+      <div class="ware-item__price"><em><div class="ware-item__price-value">1,128</div></em><span>萬</span></div>
+      <div class="ware-item__price-note"> ( 含車位價 ) </div> 22.62萬/坪</div>
+  </div>
+
+  <div class="ware-item">
+    <div class="ware-item__media"></div>
+    <div class="ware-item__content">
+      <div class="ware-item__header"><a href="https://sale.591.com.tw/home/house/detail/2/20610002.html?itm_source=sale&amp;itm_medium=list" title="永慶周子榆一眼就心動的家🏡聯悅臻❤️三房平車">永慶周子榆一眼就心動的家🏡聯悅臻❤️三房平車</a></div>
+      <div class="ware-item__attrs">
+        <span class="ware-item__attr">電梯大樓</span>
+        <span class="ware-item__attr">3房2廳2衛</span>
+        <span class="ware-item__attr">權狀49.87坪</span>
+        <span class="ware-item__attr">主建24.55坪</span>
+        <span class="ware-item__attr">1年</span>
+        <span class="ware-item__attr">13F/24F</span>
+      </div>
+      <div class="ware-item__location">
+        <span class="ware-item__community"><span>聯悅臻</span></span>
+        <span class="ware-item__section">梧棲區-</span>
+        <span class="ware-item__address">臨港路四段</span>
+      </div>
+      <div class="user-info"><span class="user-info__name">仲介賴小姐</span><span class="user-info__browse">12人瀏覽</span></div>
+      <div class="tags-row">
+        <div class="tags-row__item">含車位</div>
+        <div class="tags-row__item">有陽台</div>
+        <div class="tags-row__item">有格局圖</div>
+      </div>
+    </div>
+    <div class="ware-item__price-section">
+      <div class="ware-item__price"><em><div class="ware-item__price-value">1,128</div></em><span>萬</span></div>
+      <div class="ware-item__price-note"> ( 含車位價 ) </div> 22.62萬/坪</div>
+  </div>
+
+  <div class="ware-item">
+    <div class="ware-item__media"></div>
+    <div class="ware-item__content">
+      <div class="ware-item__header"><a href="https://sale.591.com.tw/home/house/detail/2/20610003.html?itm_source=sale" title="海創🌊聯悦臻🏝️中庭最遠棟距｜2+1房大空間平車｜聯悅臻">海創🌊聯悦臻🏝️中庭最遠棟距｜2+1房大空間平車｜聯悅臻</a></div>
+      <div class="ware-item__attrs">
+        <span class="ware-item__attr">電梯大樓</span>
+        <span class="ware-item__attr">2房2廳1衛</span>
+        <span class="ware-item__attr">權狀39.3坪</span>
+        <span class="ware-item__attr">主建18.8坪</span>
+        <span class="ware-item__attr">1年</span>
+        <span class="ware-item__attr">16F/24F</span>
+      </div>
+      <div class="ware-item__location">
+        <span class="ware-item__community"><span>聯悦臻</span></span>
+        <span class="ware-item__section">梧棲區-</span>
+        <span class="ware-item__address">臨港路四段</span>
+      </div>
+      <div class="user-info"><span class="user-info__name">仲介張芸瑄</span><span class="user-info__browse">52人瀏覽</span></div>
+      <div class="tags-row">
+        <div class="tags-row__item">含車位</div>
+        <div class="tags-row__item">有陽台</div>
+        <div class="tags-row__item">重劃區</div>
+      </div>
+    </div>
+    <div class="ware-item__price-section">
+      <div class="ware-item__price"><em><div class="ware-item__price-value">888</div></em><span>萬</span></div>
+      <div class="ware-item__price-note"> ( 含車位價 ) </div> 22.6萬/坪</div>
+  </div>
+
+  <div class="ware-item">
+    <div class="ware-item__media"></div>
+    <div class="ware-item__content">
+      <div class="ware-item__header"><a href="https://sale.591.com.tw/home/house/detail/2/20699999.html?itm_source=sale" title="屋主想賣｜興大里美｜邊間視野戶">屋主想賣｜興大里美｜邊間視野戶</a></div>
+      <div class="ware-item__attrs">
+        <span class="ware-item__attr">電梯大樓</span>
+        <span class="ware-item__attr">3房2廳2衛</span>
+        <span class="ware-item__attr">權狀48.1坪</span>
+        <span class="ware-item__attr">主建25坪</span>
+        <span class="ware-item__attr">8年</span>
+        <span class="ware-item__attr">9F/15F</span>
+      </div>
+      <div class="ware-item__location">
+        <span class="ware-item__community"><span>興大里美</span></span>
+        <span class="ware-item__section">大里區-</span>
+        <span class="ware-item__address">國光路二段</span>
+      </div>
+      <div class="user-info"><span class="user-info__name">仲介王小姐</span><span class="user-info__browse">5人瀏覽</span></div>
+      <div class="tags-row"><div class="tags-row__item">含車位</div></div>
+    </div>
+    <div class="ware-item__price-section">
+      <div class="ware-item__price"><em><div class="ware-item__price-value">1,568</div></em><span>萬</span></div> 32.6萬/坪</div>
+  </div>
+
+</div>
+</body>
+</html>

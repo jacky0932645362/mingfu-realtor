@@ -1,17 +1,19 @@
 /**
- * 離線測試 extract.mjs：用 Playwright 開一個假頁面（fixtures/sample-detail.html），
- * 讓真正的 extractListing() 去抓，再核對抓出來的值。
+ * 離線測試 extract.mjs：用 Playwright 開假頁面（fixtures/sample-detail.html 物件頁、
+ * fixtures/sample-search.html 搜尋頁），讓真正的抽取函式去抓，再核對抓出來的值。
  * 不連網、不碰真的 591，跟 591-autofill 的 test-fill-e2e.mjs 同一個做法。
+ * 後段另外測 _shared.mjs 的純邏輯（地址拆解、去重）。
  *
  * 跑法：node test-extract-logic.mjs
  */
 import { chromium } from "playwright";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
-import { extractListing, extractCommunityComps } from "./extract.mjs";
+import { extractListing, extractSearchComps } from "./extract.mjs";
+import { buildCommunitySearchUrl, dedupeComps, normalizeCommunityName, parseAddress } from "./_shared.mjs";
 
 const FIXTURE = pathToFileURL(path.join(import.meta.dirname, "fixtures", "sample-detail.html")).href;
-const COMPS_FIXTURE = pathToFileURL(path.join(import.meta.dirname, "fixtures", "sample-comps.html")).href;
+const SEARCH_FIXTURE = pathToFileURL(path.join(import.meta.dirname, "fixtures", "sample-search.html")).href;
 
 let pass = 0;
 let fail = 0;
@@ -80,26 +82,73 @@ check("recentDeals[0]", data.community.recentDeals[0], {
 });
 check("recentDeals.length", data.community.recentDeals.length, 2);
 
-await page.goto(COMPS_FIXTURE);
-const comps = await extractCommunityComps(page);
+// ── 搜尋頁：同社區在售競品（含總價／權狀坪／樓層，全是 591 純文字）──
+await page.goto(SEARCH_FIXTURE);
+const subject = { communityName: "聯悅臻", district: "梧棲區", road: "臨港路四段" };
+const search = await extractSearchComps(page, subject);
 
-check("comps.length", comps.length, 3);
-check("comps[0]（純文字欄位）", comps[0], {
-  title: "S-『專任』富宇松禾苑//大三房+B1雙平車//視野戶💯",
-  url: "https://sale.591.com.tw/home/house/detail/2/20484723.html",
-  layout: "3房2廳",
-  agent: "仲介陳家萱",
-  viewCountText: "77人瀏覽",
-  tags: ["含車位", "有格局圖"],
-  unitPrice: "41.4萬/坪",
+check("search.foundCount（「已為你找到145間房屋」）", search.foundCount, 145);
+check("search.renderedCount（含建案廣告與別區推薦）", search.renderedCount, 5);
+check("search.comps.length（過濾後只剩本社區三筆：建案卡與大里區那筆被丟掉）", search.comps.length, 3);
+check("comps[0]（欄位齊全，社區名「聯悦臻」異體字也對得上）", search.comps[0], {
+  title: "海創🌊-🍎聯悅臻朝南朝外最便宜三房配B1車位🍎聯悦臻",
+  url: "https://sale.591.com.tw/home/house/detail/2/20610001.html",
+  community: "聯悦臻",
+  buildingType: "電梯大樓",
+  layout: "3房2廳2衛",
+  sizePing: 49.87,
+  mainPing: 24.55,
+  ageText: "1年",
+  floor: "13F/24F",
+  totalPrice: 1128,
+  priceIncludesParking: true,
+  priceDrop: "降70萬",
+  unitPrice: 22.62,
+  tags: ["含車位"],
 });
-check("comps[2].tags（降價／有陽台這種多標籤）", comps[2].tags, ["降價", "含車位", "有陽台"]);
-// ⭐ 這三格刻意驗證「抓不到」：591 用 <wc-obfuscate-*> 把內容藏起來，
-// extractCommunityComps() 沒有嘗試破解，這裡確認程式老實回傳空值而不是亂猜。
-// 目前實作根本不讀這三個欄位（見 extract.mjs 註解），所以是 undefined。
-check("comps[0] 沒有 totalPrice 欄位（591 用自訂元件藏起來，刻意不試圖破解）", comps[0].totalPrice, undefined);
-check("comps[0] 沒有 size 欄位（同上）", comps[0].size, undefined);
-check("comps[0] 沒有 floor 欄位（同上）", comps[0].floor, undefined);
+check("comps[1].tags（「AI即時回覆」這種功能標籤要濾掉，物件標籤留著）", search.comps[1].tags, ["含車位", "有陽台", "有格局圖"]);
+check("comps[1].priceDrop（沒降價就是 null，不是空字串）", search.comps[1].priceDrop, null);
+check("刻意不收經紀人姓名（本人 2026-09-14 拍板內部版也不秀）", search.comps[0].agent, undefined);
+
+// ── 去重：同樓層＋同權狀坪＋同總價 → 同一戶 ──
+const deduped = dedupeComps(search.comps);
+check("dedupe：第 1、2 筆被標成同一組 A", [search.comps[0].dupGroup, search.comps[1].dupGroup], ["A", "A"]);
+check("dedupe：dupCount 都是 2", [search.comps[0].dupCount, search.comps[1].dupCount], [2, 2]);
+check("dedupe：第 3 筆（16F/39.3坪/888萬）不是重複", search.comps[2].dupGroup, undefined);
+check("dedupe：3 筆刊登＝2 戶、1 組重複", [deduped.uniqueCount, deduped.dupGroupCount], [2, 1]);
+check(
+  "dedupe：缺總價的不參與去重（寧可少標）",
+  dedupeComps([
+    { floor: "5F/10F", sizePing: 30, totalPrice: null },
+    { floor: "5F/10F", sizePing: 30, totalPrice: null },
+  ]).uniqueCount,
+  2,
+);
+check(
+  "dedupe：38.71 跟 38.7 坪（不同仲介四捨五入）要對得上",
+  dedupeComps([
+    { floor: "2F/24F", sizePing: 38.71, totalPrice: 780 },
+    { floor: "2F/24F", sizePing: 38.7, totalPrice: 780 },
+  ]).dupGroupCount,
+  1,
+);
+check(
+  "dedupe：只有樓層＋坪數相同、總價不同 → 不算同一戶（同層鏡像戶）",
+  dedupeComps([
+    { floor: "5F/10F", sizePing: 30, totalPrice: 900 },
+    { floor: "5F/10F", sizePing: 30, totalPrice: 950 },
+  ]).dupGroupCount,
+  0,
+);
+
+// ── 地址拆解 → 591 縣市代碼 ──
+check("parseAddress 台中", parseAddress("台中市梧棲區臨港路四段"), { city: "台中市", regionId: 8, district: "梧棲區", road: "臨港路四段" });
+check("parseAddress 「臺」中也要認得", parseAddress("臺中市沙鹿區向上路六段").regionId, 8);
+check("parseAddress 新北市", parseAddress("新北市板橋區文化路一段"), { city: "新北市", regionId: 3, district: "板橋區", road: "文化路一段" });
+check("parseAddress 縣＋鄉", parseAddress("彰化縣花壇鄉中山路").district, "花壇鄉");
+check("parseAddress 拆不出來 → 全 null", parseAddress("梧棲區臨港路"), { city: null, regionId: null, district: null, road: null });
+check("normalizeCommunityName 悦→悅、去空白括號", normalizeCommunityName("聯悦臻 (華廈區)"), "聯悅臻華廈區");
+check("buildCommunitySearchUrl", buildCommunitySearchUrl(8, "聯悅臻"), "https://sale.591.com.tw/?region=8&keywords=%E8%81%AF%E6%82%85%E8%87%BB");
 
 await browser.close();
 

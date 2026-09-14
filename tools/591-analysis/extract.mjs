@@ -13,14 +13,14 @@
  * ⚠️ 找不到的欄位一律回傳 null／空陣列並記進 warnings，絕不猜。
  *    591 改版時，先看 warnings 裡缺哪個欄位，再回來對照真實頁面調整下面的選取器。
  *
- * ⚠️⚠️ `extractCommunityComps()`（社區在售物件清單頁）有一個更明確的反爬蟲機制：
- *    591 用自訂元素 `<wc-obfuscate-price>`／`<wc-obfuscate-area>`／`<wc-obfuscate-floor>`
- *    把總價、坪數、樓層直接藏起來（不是排序詭計，是內容真的不在 DOM 裡）——這已經不是
- *    「格式難解析」，是 591 明確表態「這幾個數字在列表頁不給程式讀」。**這裡刻意不試圖破解，
- *    只抓這三個元件以外、591 自己就用純文字顯示的欄位**（標題／格局／仲介／標籤／單價）。
- *    不要為了補齊總價／坪數／樓層去研究怎麼繞過這幾個自訂元素——那已經跨過「讀公開頁面」
- *    到「破解主動的技術性防護」，是刻意劃的線，不是還沒做完。要精確數字，報告會附連結，
- *    人自己點進單一物件頁看（那一頁這些欄位就是純文字，見 extractListing()）。
+ * ⚠️⚠️ 同社區在售清單的來源，2026-09-14 從 market.591.com.tw 的社區清單頁改成
+ *    591 主站的關鍵字搜尋頁（`extractSearchComps()`）。原因：社區清單頁用自訂元素
+ *    `<wc-obfuscate-price>`／`<wc-obfuscate-area>`／`<wc-obfuscate-floor>` 把總價、
+ *    坪數、樓層直接藏起來（內容真的不在 DOM 裡），元件名稱就寫著 obfuscate，591 的意圖
+ *    沒有模糊空間——**那一頁我們從頭到尾沒有試圖破解，現在也不讀它了**。
+ *    搜尋頁是 591 自己用純文字把同一批數字排出來的（總價 `.ware-item__price-value`、
+ *    權狀坪、樓層都在 `.ware-item__attr`），讀它跟人打開瀏覽器看沒有差別。
+ *    如果哪天搜尋頁也開始 obfuscate，做法一樣：留白、附連結，不要去研究怎麼繞。
  */
 
 export async function extractListing(page) {
@@ -184,38 +184,80 @@ export async function extractListing(page) {
 }
 
 /**
- * 從社區「在售物件」清單頁（`community.onSaleListUrl`，market.591.com.tw/{id}/sale）
- * 抽出實際在售的個別物件——這才是真正的「競品」清單，不是只有社區級的統計數字。
+ * 從 591 主站的關鍵字搜尋頁（`sale.591.com.tw/?region=N&keywords=社區名`）抽出
+ * 同社區實際在售的個別物件——這才是真正逐筆比較的「競品」，不是社區級的統計數字。
  *
- * 只抓頁面載入當下已經渲染出來的卡片（通常十來筆），不模擬捲動載入更多、
- * 不翻頁抓完整份 67 筆——那會從「看一頁」變成「把整份清單搬過來」，
- * 已經不是這支工具設計時談過的風險範圍。報告裡會誠實寫「頁面顯示的前 N 筆，
- * 共 M 筆」，不會假裝這就是全部。
+ * 搜尋結果會混進不相干的東西（熱銷建案廣告、「依您的偏好推薦」的別區物件），
+ * 所以每張卡片都要過濾：社區名對得上（統一「悅／悦」異體字），或行政區＋路名對得上
+ * （社區名拼法對不上時的備援）。兩個都對不上的一律丟掉，寧可少也不要混進別的社區。
+ *
+ * 只抓頁面載入當下已經渲染出來的卡片（三十筆左右），不模擬捲動、不翻頁把 145 筆抓完——
+ * 那會從「看一頁」變成「把整份清單搬過來」，已經不是這支工具談過的風險範圍。
+ * 報告裡誠實寫「搜尋找到 N 筆，頁面顯示 M 筆，其中 K 筆屬本社區」。
+ *
+ * ⚠️ 刻意不抓經紀人姓名／公司。本人 2026-09-14 拍板：報告（含內部版）一律不秀其他仲介的
+ *    經紀人與公司，所以從源頭就不收這個欄位，免得之後哪個版面又不小心印出來。
  */
-export async function extractCommunityComps(page) {
-  return page.evaluate(() => {
+export async function extractSearchComps(page, subject) {
+  return page.evaluate((subject) => {
     function text(el) {
       return el ? el.textContent.trim() : "";
     }
+    function normalizeName(s) {
+      return String(s || "").replace(/悦/g, "悅").replace(/[\s　()（）]/g, "");
+    }
+    // 這幾個是 591 的功能標籤，不是物件屬性，放進報告只會干擾。
+    const UI_TAGS = new Set(["AI即時回覆", "影片房屋", "AI影音講房", "VR賞屋", "AI裝潢前", "AI裝潢後"]);
 
-    const cards = Array.from(document.querySelectorAll("a > div.info"));
-    return cards.map((info) => {
-      const link = info.parentElement;
-      const detail = info.querySelector(".detail");
-      const spans = detail ? Array.from(detail.querySelectorAll(":scope > span")) : [];
-      // .detail 底下第一個 span 是格局（純文字）；坪數／樓層那兩個 span 內容被
-      // <wc-obfuscate-*> 自訂元件吃掉，textContent 讀出來就是空的，刻意留白不硬湊。
-      const layout = spans[0] ? text(spans[0]) : null;
+    const foundMatch = document.body.innerText.match(/已為你找到\s*([\d,]+)\s*間房屋/);
+    const foundCount = foundMatch ? Number(foundMatch[1].replace(/,/g, "")) : null;
 
-      return {
-        title: text(info.querySelector("h3")) || null,
-        url: link ? link.href.split("?")[0] : null,
-        layout,
-        agent: text(info.querySelector(".normal-broker-name span")) || null,
-        viewCountText: text(info.querySelector(".normal-broker-browse span")) || null,
-        tags: Array.from(info.querySelectorAll(".tags .tag")).map((t) => text(t)),
-        unitPrice: text(info.querySelector(".price-info .price")) || null,
-      };
-    });
-  });
+    const wantName = normalizeName(subject.communityName);
+    const items = Array.from(document.querySelectorAll(".ware-item"));
+    const comps = [];
+    for (const item of items) {
+      const link = item.querySelector(".ware-item__header a[href*='/detail/']");
+      if (!link) continue; // 建案廣告卡沒有物件連結
+
+      const community = text(item.querySelector(".ware-item__community"));
+      const district = text(item.querySelector(".ware-item__section")).replace(/-$/, "");
+      const road = text(item.querySelector(".ware-item__address"));
+      const nameMatch = wantName && normalizeName(community) === wantName;
+      const addressMatch =
+        subject.district && subject.road && district === subject.district && subject.road.includes(road) && road.length >= 3;
+      if (!nameMatch && !addressMatch) continue;
+
+      const attrs = Array.from(item.querySelectorAll(".ware-item__attr")).map((a) => text(a));
+      const pick = (re) => attrs.map((a) => a.match(re)).find(Boolean);
+      const sizeM = pick(/^權狀([\d.]+)坪$/);
+      const mainM = pick(/^主建([\d.]+)坪$/);
+      const floorM = pick(/^([^/]+F|整棟|B\d+~?\d*F?)\/(\d+F)$/);
+      const ageM = pick(/^(\d+(?:年|個月))$/);
+      const layoutM = pick(/^(\d+房.*)$/);
+
+      const priceSection = item.querySelector(".ware-item__price-section");
+      const totalRaw = text(item.querySelector(".ware-item__price-value")).replace(/,/g, "");
+      const unitM = text(priceSection).match(/([\d.]+)\s*萬\/坪/);
+
+      comps.push({
+        title: text(link) || link.getAttribute("title") || null,
+        url: link.href.split("?")[0],
+        community: community || null,
+        buildingType: attrs[0] && !/[房坪年F]/.test(attrs[0]) ? attrs[0] : null,
+        layout: layoutM ? layoutM[1] : null,
+        sizePing: sizeM ? Number(sizeM[1]) : null,
+        mainPing: mainM ? Number(mainM[1]) : null,
+        ageText: ageM ? ageM[1] : null,
+        floor: floorM ? `${floorM[1]}/${floorM[2]}` : null,
+        totalPrice: totalRaw && !Number.isNaN(Number(totalRaw)) ? Number(totalRaw) : null,
+        priceIncludesParking: /含車位價/.test(text(item.querySelector(".ware-item__price-note"))),
+        priceDrop: text(item.querySelector(".ware-item__price-down span")) || null,
+        unitPrice: unitM ? Number(unitM[1]) : null,
+        tags: Array.from(item.querySelectorAll(".tags-row__item"))
+          .map((t) => text(t))
+          .filter((t) => t && !UI_TAGS.has(t)),
+      });
+    }
+    return { foundCount, renderedCount: items.length, comps };
+  }, subject);
 }
