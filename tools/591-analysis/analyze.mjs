@@ -129,8 +129,12 @@ try {
 
   ensureDir(REPORTS_DIR);
   const slug = (data.communityName || data.title || "物件").replace(/[\\/:*?"<>|]/g, "").slice(0, 20);
-  const outFile = path.join(REPORTS_DIR, `${stamp()}_${slug}.html`);
+  const base = path.join(REPORTS_DIR, `${stamp()}_${slug}`);
+  const outFile = `${base}.html`;
   writeFileSync(outFile, html, "utf8");
+  // 抓到的原始資料另存一份：之後只改報告文字／版面時，跑 render-only.mjs 重排就好，
+  // 不用再開一次 591。
+  writeFileSync(`${base}.json`, JSON.stringify(data, null, 2), "utf8");
 
   console.log(`\n報告已產生：${outFile}`);
 } finally {

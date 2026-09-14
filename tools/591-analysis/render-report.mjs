@@ -125,6 +125,22 @@ function renderCompsTable(comps, subjectUrl) {
     </p>`;
 }
 
+/**
+ * 屋主溝通版的「刊登筆數 ≠ 戶數」註記。591 的「在售 237」是刊登筆數，同一戶被四家仲介
+ * 各刊一筆就算四筆。我們只核對了搜尋頁顯示的那三十筆左右（刻意不翻頁抓完），所以
+ * 只能講「核對過的 K 筆裡有幾組重複、實為幾戶」，不能把整個 237 去重——那個數字
+ * 我們沒有，不能推估出來寫給屋主看。
+ */
+function dedupeNote(community) {
+  const m = community?.compsMeta;
+  if (!m || !m.matchedCount) return "";
+  const body =
+    m.dupGroupCount > 0
+      ? `本次核對其中 ${m.matchedCount} 筆，有 ${m.dupGroupCount} 組是同一戶被多家仲介重複刊登，實為 ${m.uniqueCount} 戶。`
+      : `本次核對其中 ${m.matchedCount} 筆，沒有發現重複刊登。`;
+  return `<p class="share-note">※ 在售筆數是 591 的刊登數，同一戶常被多家仲介各刊一筆，實際戶數會少於此。${body}</p>`;
+}
+
 /** 競品表的標題列：講清楚這張表涵蓋了多少、去重後剩多少，不讓人以為看到的就是全部。 */
 function compsHeading(community) {
   const m = community.compsMeta;
@@ -251,6 +267,7 @@ export function renderReport(data, owner) {
   .share-card .kpi .num { font-size: 19px; font-weight: 800; }
   .share-card .kpi .label { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
   .share-card .sentence { font-size: 14.5px; margin: 10px 0; padding: 12px 14px; background: var(--surface); border-radius: 10px; border-left: 3px solid var(--brand); }
+  .share-card .share-note { font-size: 12px; color: var(--ink-3); margin: 8px 2px 0; line-height: 1.5; }
   .print-hint { text-align: center; font-size: 12px; color: var(--ink-3); margin-top: 10px; }
   @media print { .no-print { display: none; } .wrap { max-width: none; } }
 </style>
@@ -287,12 +304,12 @@ export function renderReport(data, owner) {
   <section class="card">
     <h2>社區行情總覽 —— ${escapeHtml(community.name || "")}</h2>
     <div class="stat-strip">
-      <div class="stat-pill"><div class="num">${community.onSaleCount ?? "—"}</div><div class="label">目前在售（間）</div></div>
+      <div class="stat-pill"><div class="num">${community.onSaleCount ?? "—"}</div><div class="label">在售刊登（筆）</div></div>
       <div class="stat-pill"><div class="num">${community.recentListedCount ?? "—"}</div><div class="label">近半個月新上架</div></div>
       <div class="stat-pill"><div class="num">${community.priceDroppedCount ?? "—"}</div><div class="label">已降價</div></div>
       <div class="stat-pill"><div class="num">${community.avgDealUnitPrice ? `${community.avgDealUnitPrice}萬` : "—"}</div><div class="label">${escapeHtml(community.avgDealRoomType || "")}成交均價/坪</div></div>
     </div>
-    <p class="muted" style="margin:-10px 0 16px;">「目前在售」是 591 社區頁的刊登筆數，同一戶常被多家仲介各刊一筆，實際戶數會少於這個數字（下面競品表已標出重複）。</p>
+    <p class="muted" style="margin:-10px 0 16px;">「在售刊登」是 591 社區頁的刊登筆數，同一戶常被多家仲介各刊一筆，實際戶數會少於這個數字（下面競品表已標出重複）。</p>
 
     ${
       positioning
@@ -331,15 +348,16 @@ export function renderReport(data, owner) {
     <p class="headline">${escapeHtml(community?.name || data.communityName || "本社區")}・市場行情比較</p>
 
     <div class="kpi-row">
-      <div class="kpi"><div class="num">${community?.onSaleCount ?? "—"}</div><div class="label">目前在售</div></div>
+      <div class="kpi"><div class="num">${community?.onSaleCount ?? "—"}</div><div class="label">在售刊登（筆）</div></div>
       <div class="kpi"><div class="num">${community?.avgDealUnitPrice ? `${community.avgDealUnitPrice}萬` : "—"}</div><div class="label">成交均價/坪</div></div>
       <div class="kpi"><div class="num">${data.unitPrice?.raw ? data.unitPrice.raw.replace("萬/坪", "萬") : "—"}</div><div class="label">本件單價/坪</div></div>
     </div>
 
     <p class="sentence">
-      ${escapeHtml(data.communityName || "本社區")}目前${community?.onSaleCount != null ? `有 ${community.onSaleCount} 間在售` : "在售物件資料不足"}${community?.priceDroppedCount ? `，其中 ${community.priceDroppedCount} 間已降價` : ""}。
+      ${escapeHtml(data.communityName || "本社區")}目前${community?.onSaleCount != null ? `有 ${community.onSaleCount} 筆在售刊登` : "在售物件資料不足"}${community?.priceDroppedCount ? `，其中 ${community.priceDroppedCount} 筆已降價` : ""}。
       ${positioning ? `這間${escapeHtml(data.layout || "")}單價${escapeHtml(posLabel.text)}（${escapeHtml(positioning.basis)} ${positioning.baseValue}萬/坪）。` : ""}
     </p>
+    ${dedupeNote(community)}
 
     <p class="print-hint no-print">此區塊可直接截圖或列印給屋主看</p>
   </section>
