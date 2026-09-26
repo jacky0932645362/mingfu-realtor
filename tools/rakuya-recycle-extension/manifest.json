@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "樂屋出租循環刊登",
+  "version": "0.1.0",
+  "description": "樂屋出租物件排定天數自動刪除重刊（對抗新上架排序下沉），並定期檢查是否已出租。全自動，不用你按最後送出——跟「物件上架助手」不同，那支永遠只填不送出。",
+  "permissions": ["storage", "alarms", "tabs", "scripting"],
+  "host_permissions": [
+    "https://*.rakuya.com.tw/*",
+    "https://*.houseol.com.tw/*",
+    "https://api.line.me/*"
+  ],
+  "action": { "default_title": "樂屋出租循環刊登：設定" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://member.rakuya.com.tw/rent/post/*"],
+      "js": ["content/captureListing.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

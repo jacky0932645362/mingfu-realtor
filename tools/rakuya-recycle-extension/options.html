@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>樂屋出租循環刊登：設定</title>
+<style>
+  body { font-family: "Microsoft JhengHei", sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 18px; }
+  h2 { font-size: 15px; margin-top: 28px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  label { display: block; margin-top: 12px; font-size: 13px; color: #555; }
+  input[type="text"], input[type="number"] { width: 100%; box-sizing: border-box; padding: 6px 8px; margin-top: 4px; font-size: 14px; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button { margin-top: 16px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+  #save { background: #ff6a00; color: #fff; border: none; border-radius: 4px; }
+  #runNow { background: #333; color: #fff; border: none; border-radius: 4px; }
+  #status { margin-top: 10px; font-size: 13px; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+  th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
+  .warn { color: #b00; }
+  .hint { color: #888; font-size: 12px; margin-top: 2px; }
+</style>
+</head>
+<body>
+  <h1>樂屋出租循環刊登：設定</h1>
+  <p class="hint">全自動：每小時醒來檢查一次，到期的物件會自動關閉舊刊登、重貼一筆全新的，不用你按最後送出。條件是 Chrome 要開著。</p>
+
+  <h2>樂屋後台網址</h2>
+  <label>出租物件管理頁（找「成交/關閉」的那頁）
+    <input type="text" id="manageUrl" placeholder="https://member.rakuya.com.tw/...">
+  </label>
+  <label>新增出租物件頁
+    <input type="text" id="postUrl" placeholder="https://member.rakuya.com.tw/rent/post/add">
+  </label>
+
+  <h2>循環天數</h2>
+  <label>幾天沒動作就自動刪除重刊一次
+    <input type="number" id="cycleDays" min="1" style="width:100px">
+  </label>
+
+  <h2>LINE 通知（選填，不填就不會推播，只會安靜記錄）</h2>
+  <div class="row">
+    <div><label>Channel Access Token<input type="text" id="lineToken"></label></div>
+    <div><label>推播目標（群組/使用者 ID）<input type="text" id="lineTarget"></label></div>
+  </div>
+
+  <button id="save">儲存設定</button>
+  <button id="runNow">立即執行一次（測試用，不用等排程）</button>
+  <div id="status"></div>
+
+  <h2>目前追蹤中的物件</h2>
+  <table id="snapTable"><thead><tr><th>編號</th><th>狀態</th><th>下次重刊</th><th>已重刊次數</th></tr></thead><tbody></tbody></table>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>
