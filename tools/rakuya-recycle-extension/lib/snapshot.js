@@ -17,7 +17,35 @@ function fieldsEqual(key, a, b) {
   return Number(a) === Number(b);
 }
 
-export function newSnapshot({ listing, catalogUrl, no, rakuyaUrl = null, rakuyaId = null, cycleDays = 5 }) {
+/**
+ * 🔴🔴🔴🔴🔴🔴🔴🔴 2026-09-27 本人真帳號實測發現重刊出來的「特色描述」不是他
+ * 原本貼的內容——`listing` 一直是重新抓愛屋型錄頁解析出來的原始資料，不是本人
+ * 當初實際貼在樂屋描述欄裡（可能手動調整過）的那段文字。新增 `capturedDescHtml`／
+ * `capturedDescText`：在本人按下送出的那一刻，由 captureListing.js 把描述編輯器
+ * 當下的內容存起來，這才是本人真正想記住的「一模一樣」——重刊時優先用這份，
+ * 不是每次都重新用型錄資料組一份新的。見 [[project_樂屋出租循環刊登]]。
+ */
+/**
+ * 🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴 2026-09-27 本人講得更完整：「你就是要複製
+ * 我之前所有的資訊照片，如果一模一樣的話，一定是沒有問題，因為用物件上架
+ * 助手刊登新物件之後，我也是有手動修改、補充一些東西」——本人平常貼文本來
+ * 就會在自動填表跑完之後手動調整補充，不是只有描述、封面貼圖兩處可能被
+ * 手動調整過，整張表單都有可能。`capturedFormFields`：送出的當下把整張
+ * 表單目前所有欄位的值都存起來（名稱→值/勾選狀態），重刊時整批套用在
+ * 結構性填表結果之上，不用再逐一欄位等本人截圖抓到才回頭補程式碼。
+ */
+export function newSnapshot({
+  listing,
+  catalogUrl,
+  no,
+  rakuyaUrl = null,
+  rakuyaId = null,
+  cycleDays = 5,
+  capturedDescHtml = "",
+  capturedDescText = "",
+  capturedCoverPhotoDataUrl = "",
+  capturedFormFields = null,
+}) {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID().slice(0, 8),
@@ -26,6 +54,10 @@ export function newSnapshot({ listing, catalogUrl, no, rakuyaUrl = null, rakuyaI
     rakuyaUrl,
     rakuyaId,
     listing,
+    capturedDescHtml,
+    capturedDescText,
+    capturedCoverPhotoDataUrl,
+    capturedFormFields,
 
     status: "active", // active | rented_out | error
     postedAt: now,

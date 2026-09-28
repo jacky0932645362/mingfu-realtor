@@ -10,7 +10,7 @@ const { newSnapshot } = await import("../lib/snapshot.js");
 const {
   loadSnapshots, saveSnapshots, loadHistory, findById,
   attachRakuyaUrl, markChecked, recordRecycled, dueForRecycle,
-  loadSettings, saveSettings,
+  loadSettings, saveSettings, removeSnapshot,
 } = await import("../lib/store.js");
 
 let pass = 0, fail = 0;
@@ -91,6 +91,20 @@ await t("dueForRecycle：只挑 active 且到期的", async () => {
   const due = (dueForRecycle(await loadSnapshots())).map((x) => x.id);
   assert.ok(due.includes(past.id));
   assert.ok(!due.includes(future.id));
+});
+
+await t("removeSnapshot：刪掉指定 id，其他筆不受影響", async () => {
+  const list = await loadSnapshots();
+  const target = list[0];
+  const remaining = removeSnapshot(list, target.id);
+  await saveSnapshots(remaining);
+  const loaded = await loadSnapshots();
+  assert.equal(loaded.length, list.length - 1);
+  assert.ok(!loaded.some((x) => x.id === target.id));
+});
+
+await t("removeSnapshot：id 找不到要丟錯", async () => {
+  assert.throws(() => removeSnapshot([], "沒有這個id"));
 });
 
 await t("loadSettings：沒存過時給預設值", async () => {

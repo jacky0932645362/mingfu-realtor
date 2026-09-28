@@ -84,13 +84,25 @@ export async function recordRecycled(list, id, { rakuyaUrl, rakuyaId, cycleDays 
   return item;
 }
 
+/**
+ * 🔴 2026-09-27 本人真實遇到：手動處理過的物件，追蹤清單裡留下一筆對應已經
+ * 永久失效的舊刊登（status=error），而新的一筆重新開始追蹤。舊的那筆不清掉
+ * 會有實際風險——`closeOldListing` 是靠標題文字去比對「上架中物件」列表裡的
+ * 那一列，不是靠唯一編號，同一戶物件新舊兩筆標題會一樣，誤按舊的那筆「重試」
+ * 可能真的操作到新的那筆刊登。需要一個明確的刪除動作讓本人清掉報廢的追蹤資料。
+ */
+export function removeSnapshot(list, id) {
+  if (!list.some((s) => s.id === id)) throw new Error(`removeSnapshot 找不到快照 id=${id}`);
+  return list.filter((s) => s.id !== id);
+}
+
 export function dueForRecycle(list, now = new Date()) {
   return list.filter((s) => s.status === "active" && s.nextRecycleAt && new Date(s.nextRecycleAt) <= now);
 }
 
 /** 設定（後台網址／LINE 通知）跟快照分開存，options.html 那頁在改的就是這個 */
 const SETTINGS_KEY = "rr:settings";
-const DEFAULT_SETTINGS = { manageUrl: "", postUrl: "", lineToken: "", lineTarget: "", cycleDays: 5 };
+const DEFAULT_SETTINGS = { manageUrl: "", postUrl: "", lineToken: "", lineTarget: "", cycleDays: 5, coverSticker: null };
 
 export async function loadSettings() {
   const o = await chrome.storage.local.get(SETTINGS_KEY);
@@ -99,4 +111,31 @@ export async function loadSettings() {
 
 export async function saveSettings(settings) {
   await chrome.storage.local.set({ [SETTINGS_KEY]: { ...DEFAULT_SETTINGS, ...settings } });
+}
+
+/**
+ * 除錯紀錄：抓不到、猜不對的時候，本人不方便一直開不同分頁的 DevTools 主控台，
+ * 這裡集中記一份，options.html 直接顯示，本人截圖這一頁就好。內容腳本可以直接
+ * 呼叫（chrome.storage 不用經過 background 轉一手，也不怕訊息被跨網域跳轉切斷）。
+ */
+const DEBUG_KEY = "rr:debug";
+const DEBUG_MAX = 80;
+
+export async function pushDebug(from, message) {
+  const o = await chrome.storage.local.get(DEBUG_KEY);
+  const list = Array.isArray(o[DEBUG_KEY]) ? o[DEBUG_KEY] : [];
+  // 🔴 2026-09-27 原本 300 字太短——recycleOne() 把 closeListing.js／createListing.js
+  // 整包錯誤物件 JSON.stringify 塞進來，遇到需要附一段畫面文字內容當診斷用的情況
+  // （例如 dialogTextDump）300 字一下就被切光，最有用的部分反而看不到。
+  list.push({ at: new Date().toISOString(), from, message: String(message).slice(0, 1000) });
+  await chrome.storage.local.set({ [DEBUG_KEY]: list.slice(-DEBUG_MAX) });
+}
+
+export async function loadDebug() {
+  const o = await chrome.storage.local.get(DEBUG_KEY);
+  return Array.isArray(o[DEBUG_KEY]) ? o[DEBUG_KEY] : [];
+}
+
+export async function clearDebug() {
+  await chrome.storage.local.set({ [DEBUG_KEY]: [] });
 }
