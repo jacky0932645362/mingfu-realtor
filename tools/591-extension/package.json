@@ -1,0 +1,13 @@
+{
+  "name": "listing-591-extension",
+  "private": true,
+  "type": "module",
+  "description": "物件上架助手（Chrome 外掛）。沒有任何依賴；package.json 只是為了讓 node 用 ES module 跑 test/。",
+  "scripts": {
+    "test": "node test/test-parser.mjs && node test/test-map.mjs && node test/test-rakuya-map.mjs && node test/test-tail-style.mjs && node test/test-launch-queue.mjs && node test/test-catalog-html.mjs && node test/test-floorplan.mjs",
+    "test:fill": "node test/test-fill-e2e.mjs",
+    "test:fill-rakuya": "node test/test-fill-rakuya-e2e.mjs",
+    "test:app": "node test/test-app-smoke.mjs && node test/test-app-catalog-url.mjs && node test/test-app-register.mjs",
+    "test:all": "node test/test-parser.mjs && node test/test-map.mjs && node test/test-rakuya-map.mjs && node test/test-tail-style.mjs && node test/test-launch-queue.mjs && node test/test-catalog-html.mjs && node test/test-floorplan.mjs && node test/test-fill-e2e.mjs && node test/test-fill-rakuya-e2e.mjs && node test/test-app-smoke.mjs && node test/test-app-catalog-url.mjs && node test/test-app-register.mjs"
+  }
+}

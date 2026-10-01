@@ -1,0 +1,66 @@
+/* 591 頁面右下角的進度面板 */
+#listing-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 340px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  color: #1f2328;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font: 13px/1.5 "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  z-index: 2147483000;
+}
+#listing-panel h4 {
+  margin: 0;
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  background: #0b57d0;
+  color: #fff;
+  border-radius: 10px 10px 0 0;
+}
+#listing-panel h4 button {
+  font: inherit;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+#listing-panel ul {
+  margin: 0;
+  padding: 8px 12px;
+  list-style: none;
+  overflow: auto;
+  flex: 1;
+}
+#listing-panel li {
+  padding: 2px 0;
+  border-bottom: 1px dashed #eee;
+}
+#listing-panel li.ok { color: #1a7f37; }
+#listing-panel li.warn { color: #9a6700; }
+#listing-panel li.bad { color: #c8102e; font-weight: 700; }
+#listing-panel .miss {
+  padding: 8px 12px;
+  background: #fff5d6;
+  color: #7a5200;
+  border-top: 1px solid #e4d29a;
+}
+#listing-panel .foot {
+  padding: 8px 12px;
+  background: #f6f8fa;
+  color: #57606a;
+  border-top: 1px solid #d0d7de;
+  border-radius: 0 0 10px 10px;
+  font-size: 12px;
+}

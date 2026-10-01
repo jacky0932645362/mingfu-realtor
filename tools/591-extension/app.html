@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>物件上架助手</title>
+<link rel="stylesheet" href="app.css" />
+<!-- 外掛頁面的 CSP 不准 inline script，所有程式都在 app.js（ES module，相對路徑 import） -->
+</head>
+<body>
+<div class="wrap">
+
+<section id="file-warn" class="card warn" hidden>
+  <h2>⚠ 這一頁不能直接點檔案打開</h2>
+  <p>你是從資料夾裡雙擊 <code>app.html</code> 打開的，瀏覽器會擋住程式，按鈕都不會動。請從 Chrome 工具列的「物件上架助手」圖示打開（沒裝的話先照 README 裝）。</p>
+</section>
+<script src="app-guard.js"></script>
+
+<header class="top">
+  <div>
+    <h1>物件上架助手</h1>
+    <p class="sub">貼上愛屋型錄（或自己打的物件文字）→ 解析 → 補紅底 → 按「上架到 591」，外掛把刊登表單填好。<b>「保存資料」與「立即支付」永遠由你自己按。</b></p>
+    <p id="lic-top" class="msg"></p>
+  </div>
+  <button id="toggle-settings" class="ghost" type="button">⚙ 我的資料</button>
+</header>
+
+<section id="settings" class="card" hidden>
+  <h2>⚙ 我的資料（只存在你自己的 Chrome，填一次就好）</h2>
+  <label class="block">授權碼（提供者給你的，沒有有效授權碼，「解析」和「上架」都不會動）
+    <input id="s-key" placeholder="例：MF-ABCD-EFGH-JKLM" spellcheck="false" autocomplete="off" />
+  </label>
+  <p id="lic-msg" class="msg"></p>
+  <div class="grid2">
+    <label>姓名（591 聯絡人）<input id="s-name" placeholder="例：蕭茗馥" /></label>
+    <label>手機<input id="s-phone" placeholder="例：0932-645-362" /></label>
+    <label>LINE ID<input id="s-line" placeholder="例：0932645362" /></label>
+    <label>經紀業名稱（文案落款用）<input id="s-company" placeholder="例：太平洋房屋 ○○加盟店" /></label>
+    <label>委託書預設<select id="s-contract"><option>有簽訂</option><option>無簽訂</option></select></label>
+    <label>描述抬頭<input id="s-head" placeholder="例：☆ 物件特色" /></label>
+  </div>
+  <label class="block">固定尾段（選填）：每一戶描述最後固定接的一段，例如電話、LINE、店名。留空就不加。
+    <code>{{name}}</code> <code>{{phone}}</code> <code>{{line}}</code> <code>{{company}}</code> 會自動換成上面填的。
+    <textarea id="s-tail" rows="5" spellcheck="false" placeholder="例：歡迎來電預約看屋 {{phone}}（{{name}}）　LINE：{{line}}　{{company}}"></textarea>
+  </label>
+  <div id="tail-style" class="tstyle">
+    <p class="hint">固定尾段的樣式（選填）：字級、<b>粗體</b>、<u>底線</u>整段共用；文字顏色和底色<b>一行一行各自選</b>。
+      只套在固定尾段，抬頭與 ✨ 特色行固定套粗體18px（不能自訂、沒有開關，見④）。<b>591 不支援底線</b>（貼上去會被拿掉，樂屋看得到）；沒設任何樣式就跟以前一樣貼純文字。</p>
+    <div class="tstyle-row">
+      <label class="inline">字級
+        <select id="ts-size"><option value="">不設定</option><option value="16px">16px</option><option value="18px">18px</option></select>
+      </label>
+      <label class="inline"><input type="checkbox" id="ts-bold" /> <b>B</b> 粗體</label>
+      <label class="inline"><input type="checkbox" id="ts-underline" /> <u>U</u> 底線</label>
+    </div>
+    <p id="ts-empty" class="hint">固定尾段填了字才能一行一行選顏色。</p>
+    <div id="ts-lines" class="ts-lines"></div>
+    <div class="tstyle-row" id="ts-preview-row" hidden><span class="tstyle-lab">預覽</span></div>
+    <div id="ts-preview" class="tstyle-preview"></div>
+  </div>
+  <div id="cover-sticker" class="tstyle">
+    <p class="hint">封面貼圖（選填，2026-09-24 新增）：存一張圖（建議去背人像＋落款帶，先用「批次貼圖」工具的「封面貼圖」功能抓位置感覺）。
+      解析型錄後，會自動把這張圖合成到抓回來的第一張照片（591 封面）上——滿版寬、貼齊底部，不用再另外開網頁手動貼。只存一張，換人就重新上傳蓋掉。</p>
+    <label class="inline" style="cursor:pointer">
+      <input id="cs-file" type="file" accept="image/*" hidden />
+      <span class="ghost" style="padding:6px 12px;border-radius:6px;display:inline-block">選圖片…</span>
+    </label>
+    <button id="cs-remove" type="button" class="ghost" hidden>移除封面貼圖</button>
+    <p id="cs-msg" class="msg"></p>
+    <div class="tstyle-row" id="cs-preview-row" hidden><span class="tstyle-lab">目前存的</span></div>
+    <img id="cs-preview" alt="封面貼圖預覽" style="max-width:160px;max-height:160px;display:block;border-radius:6px;background:repeating-conic-gradient(#2a2a2a 0% 25%, transparent 0% 50%) 50%/12px 12px" />
+  </div>
+  <div class="row-btns">
+    <button id="s-save" class="primary" type="button">儲存</button>
+    <span id="s-msg" class="msg"></span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>① 貼上資料</h2>
+  <p class="hint"><b>直接貼型錄頁的網址</b>（一行就好）：外掛會自動抓回來解析、照片也自動帶，不用按「顯示」也不用自己複製。
+    門牌沒帶到的話（型錄本來就沒填，或這戶沒開放看門牌），③ 自己補一下就好。
+    也可以照舊：打開型錄頁，先把地址旁的「<b>顯示</b>」點開 → <kbd>Ctrl+A</kbd> → <kbd>Ctrl+C</kbd> → 貼在這裡；
+    或貼自己打的物件文字（第一行標題／地址：／售價：或租金：／格局：／坪數：／樓層：／✨ 特色行）。</p>
+  <textarea id="raw" rows="10" placeholder="貼型錄頁網址，或貼型錄文字…" spellcheck="false"></textarea>
+  <div class="row-btns">
+    <button id="parse" class="primary" type="button" disabled>解析</button>
+    <button id="clear" class="ghost" type="button">清空</button>
+    <span id="parse-msg" class="msg"></span>
+  </div>
+</section>
+
+<div id="result" hidden>
+  <section id="warn-card" class="card warn" hidden>
+    <h2>⚠ 解析時的提醒</h2>
+    <ul id="warns" class="warns"></ul>
+  </section>
+
+  <section class="card">
+    <h2>② 591 第①頁會選</h2>
+    <div id="steps" class="steps"></div>
+    <p id="steps-note" class="hint"></p>
+  </section>
+
+  <section class="card">
+    <h2>③ 第②頁每一格</h2>
+    <p class="hint"><span class="legend need">紅底</span> = 資料裡沒有、要你補；<span class="legend pick">綠字</span> = 591 上是用選的。每一格都能改，改了就照你改的填。</p>
+    <div id="rows" class="rows"></div>
+  </section>
+
+  <section class="card">
+    <h2>④ 標題與描述</h2>
+    <label class="block">廣告標題（6～30 字）<input id="title" /></label>
+    <p id="title-msg" class="msg"></p>
+    <p id="title-suggest" class="hint" hidden>建議標題：<b id="title-suggest-text"></b> <button id="title-apply" type="button">套用</button></p>
+    <label class="block">現況特色描述（純文字，可以直接改；固定尾段的字級／顏色在「⚙ 我的資料」設好按儲存，下面的預覽就是貼到 591／樂屋之後的樣子）<textarea id="desc" rows="12" spellcheck="false"></textarea></label>
+    <p id="desc-msg" class="msg"></p>
+    <div class="tstyle-row" id="desc-preview-row" hidden><span class="tstyle-lab">上架時長這樣</span></div>
+    <div id="desc-preview" class="tstyle-preview" hidden></div>
+    <div id="risks" class="risk" hidden></div>
+  </section>
+
+  <section class="card">
+    <h2>⑤ 照片</h2>
+    <p id="photos-msg" class="hint"></p>
+    <label class="block">照片來源（型錄頁網址、「更多照片」連結、或照片網址，幾條都可以；貼型錄時通常會自動帶進來）
+      <input id="photo-link" placeholder="https://es.houseol.com.tw/Ecatalog.aspx?...  或  ...EInfos.aspx?...&picstr=..." />
+    </label>
+    <p id="photo-link-msg" class="msg"></p>
+    <div id="floorplan-box" hidden>
+      <p id="floorplan-msg" class="msg"></p>
+      <label class="inline" id="floorplan-reject-row" hidden><input type="checkbox" id="floorplan-reject" /> 不是格局圖</label>
+    </div>
+    <div id="cover-composite-box" hidden>
+      <p id="cover-composite-msg" class="msg"></p>
+    </div>
+  </section>
+
+  <section class="card launch">
+    <h2>⑥ 上架到 591／樂屋</h2>
+    <p class="hint">紅底補完再按哪個平台。會開一個刊登分頁自動填，右下角面板會一行一行報進度、最後列出還缺什麼。<b>填的時候不要切到別的分頁</b>；看到「✅ 填完」後從上往下核對，最後自己按 591 的「保存資料，下一步」、或樂屋的「庫存」／「上架」——兩個平台分開按，要哪個平台就按哪顆。分開按、或按「一起上架」都可以：一起上架會先填 591，591 填完自動開樂屋分頁接著填，兩邊各自核對、各自按保存／上架。要先在 Chrome 登入該平台。</p>
+    <div class="row-btns">
+      <button id="launch" class="primary big" type="button">🚀 上架到 591</button>
+      <button id="launch-rakuya" class="primary big" type="button">🏠 上架到樂屋</button>
+      <button id="launch-both" class="primary big" type="button">🚀🏠 591＋樂屋一起上架</button>
+      <span id="need-msg" class="msg bad"></span>
+    </div>
+    <p id="launch-msg" class="msg"></p>
+  </section>
+</div>
+
+<p class="foot">這個工具只是把「你自己的物件資料」填進 591 的表單；不抓 591 任何資料、不存你的 591 帳密、不把資料傳到任何地方。送出與付款永遠由你本人操作。刊登內容的正確性與法規責任在刊登人自己。</p>
+
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

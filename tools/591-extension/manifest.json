@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "物件上架助手",
+  "version": "0.5.5",
+  "description": "把愛屋電子型錄（或自己打的物件文字）貼進來，一鍵把每一格、文案、照片填進 591／樂屋的出售／出租刊登表單。「保存資料」與「立即支付」永遠由你自己按。",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.houseol.com.tw/*",
+    "https://*.591.com.tw/*",
+    "https://member.rakuya.com.tw/*",
+    "https://res.cloudinary.com/*",
+    "https://mingfu-realtor.vercel.app/*",
+    "https://www.pacific.com.tw/*"
+  ],
+  "action": { "default_title": "物件上架助手：貼型錄 → 上架 591／樂屋" },
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://user.591.com.tw/post/*"],
+      "js": ["fill591.js"],
+      "css": ["panel.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://member.rakuya.com.tw/sell/post/*", "https://member.rakuya.com.tw/rent/post/*"],
+      "js": ["fillRakuya.js"],
+      "css": ["panel.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
