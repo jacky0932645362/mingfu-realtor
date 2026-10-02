@@ -215,6 +215,25 @@
      * 有沒有抓到值，抓到的話文字是什麼。
      */
     const addrRoadDebug = formFields.addr_road ? JSON.stringify(formFields.addr_road) : "(這次沒抓到 addr_road 這個欄位)";
+    /**
+     * 🔴 2026-09-28 本人截圖抓到：社區大樓下拉選單值是對的，但「是社區
+     * 大樓/建案」單選鈕沒被勾選，紅字必填。跟 addrRoadDebug 同一招，直接
+     * 印出這個具體欄位當下擷取到的結果——如果這裡顯示沒抓到，代表編輯頁
+     * 本身這個單選鈕在擷取當下就是未勾選狀態（擷取端如實反映）；如果有
+     * 抓到值，代表問題出在套用端（某個更晚的變更事件把它重置掉）。
+     */
+    const isCommunityDebug = formFields.is_community ? JSON.stringify(formFields.is_community) : "(這次沒抓到 is_community 這個欄位)";
+    /**
+     * 🔴 2026-09-28 換第二筆物件（AD5401490）測試，第一次冒出前一筆從沒
+     * 踩過的新紅字：「物件名稱」。標題目前完全不走 capturedFormFields
+     * 這條「以現在編輯頁為準」的路，是 background.js 的
+     * buildRecreatePayload() 純用型錄資料 cleanTitle(listing.rawTitle)
+     * 組出來——跟街道/門牌不一樣，這裡本來就沒有「擷取端優先」這一層。
+     * 直接印出編輯頁擷取到的 hname 具體內容，確認：①這個欄位名稱本身
+     * 對不對（是不是真的叫 hname）②抓到的話內容是什麼，才知道問題是
+     * 出在欄位名稱猜錯，還是這筆物件的型錄標題資料本身有問題。
+     */
+    const hnameDebug = formFields.hname ? JSON.stringify(formFields.hname) : "(這次沒抓到 hname 這個欄位)";
     return {
       ok: true,
       descHtml,
@@ -227,6 +246,8 @@
       formFieldCount: Object.keys(formFields).length,
       formFields,
       addrRoadDebug,
+      isCommunityDebug,
+      hnameDebug,
     };
   };
 })();

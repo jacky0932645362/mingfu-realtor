@@ -38,6 +38,22 @@
     <input type="number" id="cycleDays" min="0" style="width:100px">
   </label>
 
+  <h2>自動下架檢查（太平洋官網）</h2>
+  <p class="hint">只針對出租。依設定的間隔（1～30 天）在固定時間，打開每筆追蹤物件描述最後一行的太平洋官網連結；官網已經找不到這戶（連抓兩次確認），
+    就自動到樂屋把它「成交/關閉」並停止重刊。網路錯誤只會記錄「檢查失敗」，絕不會因此下架。Chrome 要開著，錯過時間會在下次開啟時補跑。</p>
+  <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="delistEnabled"> 啟用自動檢查</label>
+  <label>每隔幾天檢查一次
+    <select id="delistEveryDays" style="padding:6px 8px;margin-top:4px;font-size:14px;"></select>
+  </label>
+  <label>檢查的時間（台灣時間）
+    <input type="time" id="delistTime" style="width:140px;padding:6px 8px;margin-top:4px;font-size:14px;">
+  </label>
+  <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="delistAutoClose"> 發現下架時自動在樂屋關閉（取消勾選＝只用 LINE 通知，不動樂屋）</label>
+  <button id="delistSave" type="button" style="background:#ff6a00;color:#fff;border:none;border-radius:4px;">儲存下架檢查設定</button>
+  <button id="delistDry" type="button" style="background:#555;color:#fff;border:none;border-radius:4px;">立即檢查（只回報，不動樂屋）</button>
+  <button id="delistNow" type="button" style="background:#b00;color:#fff;border:none;border-radius:4px;">立即檢查並自動下架</button>
+  <div id="delistStatus" style="margin-top:10px;font-size:13px;white-space:pre-wrap;"></div>
+
   <h2>封面貼圖（選填）</h2>
   <p class="hint">重刊時自動從樂屋抓回來的封面照，是樂屋伺服器上存的原圖——如果原本第一張照片有貼人像貼圖，
     樂屋存的那份通常沒有。這裡存一張貼圖，重刊時會自動合成到抓回來的封面照最下面、滿版寬（跟「物件上架
@@ -60,7 +76,7 @@
   <div id="status"></div>
 
   <h2>目前追蹤中的物件</h2>
-  <table id="snapTable"><thead><tr><th>編號</th><th>狀態</th><th>下次重刊</th><th>已重刊次數</th><th>操作</th></tr></thead><tbody></tbody></table>
+  <table id="snapTable"><thead><tr><th>編號</th><th>狀態</th><th>下次重刊</th><th>已重刊次數</th><th>官網檢查</th><th>操作</th></tr></thead><tbody></tbody></table>
 
   <h2>除錯紀錄（截圖這裡給開發者看就好，不用開 DevTools）</h2>
   <button id="clearDebug" style="background:#888;color:#fff;border:none;border-radius:4px;">清除紀錄</button>

@@ -74,6 +74,11 @@ async function render() {
   $("cycleDays").value = s.cycleDays;
   $("lineToken").value = s.lineToken;
   $("lineTarget").value = s.lineTarget;
+  $("delistEnabled").checked = !!s.delistEnabled;
+  if (!$("delistEveryDays").options.length) $("delistEveryDays").innerHTML = Array.from({ length: 30 }, (_, i) => `<option value="${i + 1}">${i === 0 ? "每天" : "每 " + (i + 1) + " 天"}</option>`).join("");
+  $("delistEveryDays").value = String(s.delistEveryDays || 1);
+  $("delistTime").value = s.delistTime || "09:00";
+  $("delistAutoClose").checked = s.delistAutoClose !== false;
   coverSticker = s.coverSticker || null;
   renderCoverSticker();
 
@@ -86,7 +91,7 @@ async function render() {
             // 🔴 2026-09-27：按鈕原本只在 active 才畫出來，但 background.js 的 onlyId
             // 早就放寬成「不是 rented_out 就能重試」——這裡沒跟著放寬，導致本人真的遇到
             // error 狀態時，畫面上連按鈕都看不到、根本點不到，等於後端修好了前端沒露出來。
-            `<tr><td>${esc(x.no || x.listing?.title || x.id)}</td><td>${esc(x.status)}</td><td>${esc(fmt(x.nextRecycleAt))}</td><td>${x.cycleCount}</td><td>${
+            `<tr><td>${esc(x.no || x.listing?.title || x.id)}</td><td>${esc(x.status)}</td><td>${esc(fmt(x.nextRecycleAt))}</td><td>${x.cycleCount}</td><td>${esc(pacificLabel(x))}</td><td>${
               x.status !== "rented_out" ? `<button class="runOne" data-id="${esc(x.id)}" data-no="${esc(x.no || x.id)}">${x.status === "error" ? "重試這一筆" : "只重刊這一筆"}</button>` : "—"
             } <button class="removeOne" data-id="${esc(x.id)}" data-no="${esc(x.no || x.id)}">刪除追蹤</button></td></tr>`,
         )
@@ -102,6 +107,12 @@ async function render() {
   // 每次重畫都停在捲軸原本的位置（通常是最上面＝最舊的），本人不知道要
   // 自己往下捲，截圖給我的常常是舊資料。改成每次重畫都自動捲到最新一行。
   debugEl.scrollTop = debugEl.scrollHeight;
+}
+
+const PACIFIC_LABELS = { same: "✅ 官網還在", delist: "⚫️ 官網已下架", delist_dryrun: "⚠️ 疑似下架（未動作）", fetch_failed: "檢查失敗", never_seen: "❓ 官網從沒看到過", no_link: "沒有官網連結" };
+function pacificLabel(x) {
+  if (!x.lastPacificResult) return "還沒檢查";
+  return `${PACIFIC_LABELS[x.lastPacificResult] || x.lastPacificResult}（${fmt(x.lastPacificCheckAt)}）`;
 }
 
 function esc(s) {
@@ -129,6 +140,10 @@ $("save").addEventListener("click", async () => {
       lineToken: $("lineToken").value.trim(),
       lineTarget: $("lineTarget").value.trim(),
       coverSticker,
+      delistEnabled: $("delistEnabled").checked,
+      delistTime: $("delistTime").value || "09:00",
+      delistEveryDays: Number($("delistEveryDays").value) || 1,
+      delistAutoClose: $("delistAutoClose").checked,
     });
     $("status").textContent = "已儲存";
     setTimeout(() => ($("status").textContent = ""), 2000);
@@ -137,6 +152,31 @@ $("save").addEventListener("click", async () => {
   }
   render();
 });
+
+/* 自動下架檢查：存設定時順便叫背景重排鬧鐘；兩顆立即檢查只差 dryRun */
+$("delistSave").addEventListener("click", async () => {
+  try {
+    const cur = await loadSettings();
+    await saveSettings({ ...cur, delistEnabled: $("delistEnabled").checked, delistTime: $("delistTime").value || "09:00", delistEveryDays: Number($("delistEveryDays").value) || 1, delistAutoClose: $("delistAutoClose").checked });
+    chrome.runtime.sendMessage({ type: "rr:delist-reschedule" }, (r) => {
+      $("delistStatus").textContent = r?.ok ? ($("delistEnabled").checked ? `已儲存，每 ${$("delistEveryDays").value} 天的 ${$("delistTime").value || "09:00"} 自動檢查` : "已儲存（自動檢查目前是關閉的）") : `鬧鐘設定失敗：${r?.error || "沒有回應"}`;
+    });
+  } catch (err) {
+    $("delistStatus").textContent = `儲存失敗：${err.message}`;
+  }
+});
+function runDelist(dryRun) {
+  if (!dryRun && !confirm("會真的檢查每一筆，官網已下架的會立刻在樂屋「成交/關閉」。確定嗎？")) return;
+  $("delistStatus").textContent = "檢查中…（每筆要抓官網，若發現疑似下架會再多確認一次）";
+  chrome.runtime.sendMessage({ type: "rr:delist-check", dryRun }, (r) => {
+    if (!r?.ok) { $("delistStatus").textContent = `失敗：${r?.error || "沒有回應"}`; render(); return; }
+    const lines = (r.results || []).map((x) => `・${x.no || x.id}：${PACIFIC_LABELS[x.verdict] || x.verdict}${x.reasons?.length ? "（" + x.reasons.join("、") + "）" : ""}${x.error ? "（" + x.error + "）" : ""}${x.delisted === true ? " → 已在樂屋關閉" : x.delisted === false ? " → 樂屋關閉失敗" : ""}${x.notes?.length ? "｜" + x.notes.join("、") : ""}`);
+    $("delistStatus").textContent = `${dryRun ? "（只回報）" : ""}檢查了 ${r.processed} 筆\n${lines.join("\n")}`;
+    render();
+  });
+}
+$("delistDry").addEventListener("click", () => runDelist(true));
+$("delistNow").addEventListener("click", () => runDelist(false));
 
 $("runNow").addEventListener("click", () => {
   $("status").textContent = "執行中…";

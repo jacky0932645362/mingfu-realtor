@@ -22,21 +22,128 @@
   const byName = (name) => document.querySelector(`[name="${name}"]`) || document.getElementById(name);
   const allByName = (name) => [...document.querySelectorAll(`[name="${name}"]`)];
   const labelOf = (i) => txt(i.closest("label")) || (i.id && txt(document.querySelector(`label[for="${i.id}"]`))) || "";
+  /**
+   * 🔴 2026-09-29 本人親自手動點「儲存」送出成功，證實表單資料本身完全
+   * 沒問題，問題出在自動點擊的機制——跟 closeListing.js 當初「不方便
+   * 帶看屋」踩過的坑是同一種：`el.textContent` 會把子孫元素的文字也算
+   * 進去，如果真正的按鈕被包在一層沒有其他文字的外層容器裡，外層容器
+   * 的 `textContent` 也會剛好完全等於「儲存」，`querySelectorAll` 由外
+   * 到內的順序會讓外層容器比內層真正的按鈕先被找到、先被回傳——點擊
+   * 這個外層容器不會觸發按鈕自己的事件處理，跟真人點擊按鈕本身不是
+   * 同一個目標元素。改用 `ownText()`（只算自己的文字節點、不算子孫）
+   * 取代 `textContent`，直接搬 closeListing.js 已經驗證過的同一份實作。
+   */
+  function ownText(e) {
+    let s = "";
+    for (const node of e.childNodes) {
+      if (node.nodeType === 3) s += node.textContent;
+    }
+    return s.replace(/\s+/g, " ").trim();
+  }
+
+  /**
+   * 🔴 2026-09-28 本人截圖抓到：按儲存時樂屋會跳出原生 confirm()「您已
+   * 刊登過相同物件...」，background.js 已經改用 `world:"MAIN"` 注入蓋掉
+   * `window.confirm`／`window.alert`——但這裡（隔離世界的內容腳本）沒
+   * 辦法直接確認那個蓋法真的生效了、真的攔到呼叫。`world:"MAIN"` 注入
+   * 的程式碼沒有 `chrome.*` API 可以直接回報，但跟這支內容腳本共用同一
+   * 顆 DOM，用自訂事件（`document.dispatchEvent`／`addEventListener`
+   * 兩邊都能存取同一個 document）把「confirm() 有沒有真的被呼叫、呼叫
+   * 時的訊息是什麼」傳回來，不用再猜攔截機制到底有沒有生效。
+   */
+  let nativeConfirmSeen = null;
+  document.addEventListener("rr:native-confirm", (e) => {
+    nativeConfirmSeen = (e.detail && e.detail.message) || "(沒有訊息內容)";
+  });
 
   /**
    * 真正的送出按鈕：2026-09-27 本人截圖實測確認文字是「儲存」，不是原本猜的「上架」
    * ——不限定標籤（不一定是 <button>），從畫面上所有元素裡找「自己的文字剛好就是
-   * 這幾個詞之一」的那個（textContent 完全相等，含其他文字的外層容器不會誤中）。
+   * 這幾個詞之一」的那個。
+   *
+   * 🔴 2026-09-29 原本用 `el.textContent` 比對，換第二筆物件測試撞上：
+   * 本人手動點「儲存」送出成功，證實自動送出點到的不是真正有作用的
+   * 按鈕——`textContent` 含子孫元素文字，如果按鈕被包在一層沒有其他
+   * 文字的外層容器（`<div><button>儲存</button></div>`這種），外層
+   * `textContent` 也會剛好完全等於「儲存」，`querySelectorAll` 由外到
+   * 內的順序讓外層容器比內層真正的按鈕先被找到、先被回傳——點這個外層
+   * 容器不會觸發按鈕自己的事件處理。原本的註解「含其他文字的外層容器
+   * 不會誤中」只防到「外層還有別的文字」這種情況，沒防到「外層沒有
+   * 別的文字」這種最常見的純包裝寫法。改用 `ownText()`（只算自己的
+   * 文字節點、不算子孫）取代，這樣不管真正的文字是掛在最外層還是最
+   * 內層，一定會先比對到「自己的文字剛好等於」的那一個。
    */
   const SUBMIT_TEXTS = ["儲存", "上架", "確認上架", "立即上架"];
   function findSubmitAncestor(root) {
     const collapsed = (s) => String(s || "").replace(/\s+/g, "").trim();
     const all = root.querySelectorAll("button, a, div, span, input[type='submit'], input[type='button']");
     for (const el of all) {
-      const t = el.tagName === "INPUT" ? el.value : el.textContent;
+      const t = el.tagName === "INPUT" ? el.value : ownText(el);
       if (SUBMIT_TEXTS.includes(collapsed(t)) && visible(el)) return el;
     }
     return null;
+  }
+
+  /**
+   * 🔴🔴🔴 2026-09-29 本人親自確認：畫面上橘色「儲存」按鈕視覺正常、
+   * 手動點擊真的能送出成功——`findSubmitAncestor()` 用 `ownText()` 抓
+   * 這顆按鈕的文字（連同放大範圍、濾掉隱藏元素之後的候選清單）卻完全
+   * 抓不到「儲存」兩個字。文字比對這條路線走到底了：最可能的解釋是這個
+   * 「儲存」字樣根本不是一般的 DOM 文字節點（可能是圖示字型、CSS
+   * `content` 偽元素、或類似做法），純文字比對天生就看不到。改用已經
+   * 有直接視覺證據的線索——這顆按鈕本人這輪、先前所有截圖裡都是同一種
+   * 醒目的橘色——跟本檔案已經驗證過的「紅字掃描」（用 `getComputedStyle`
+   * 判斷顏色，不用猜確切 class 名稱）同一招，這次改成找背景是橘色的
+   * 可見按鈕型元素，當文字比對找不到時的備援。
+   *
+   * 🔴🔴🔴🔴 2026-09-29 本人重試：`usedColorFallback:true`（顏色找法真的
+   * 有比對到、真的點了），但畫面依然卡住沒跳轉、跟修好之前一模一樣。
+   * 代表顏色比對本身不夠精準——同一頁候選清單裡本來就還有別的橘色系
+   * 按鈕（例如照片區塊的「設為格局圖」「全部移除」、聯絡資訊的電話號碼
+   * 按鈕），這次抓到的極可能是「畫面上第一個符合橘色的按鈕」而不是真正
+   * 的「儲存」，原本用 `for...return`（找到第一個就回傳）在候選只有一個
+   * 時剛好矇對，候選變多就失準。真正的「儲存」是整個表單最後的送出
+   * 動作，改成收集所有符合顏色的候選、取**最後一個**（文件順序最晚
+   * 出現的），比「拿第一個」更貼近「送出按鈕在表單最下面」這個已知的
+   * 版面事實。
+   */
+  function findSubmitByColor(root) {
+    const all = root.querySelectorAll("button, a, input[type='submit'], input[type='button']");
+    let last = null;
+    for (const el of all) {
+      if (!visible(el)) continue;
+      const c = getComputedStyle(el).backgroundColor;
+      const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (m && +m[1] > 200 && +m[2] > 80 && +m[2] < 180 && +m[3] < 100) last = el;
+    }
+    return last;
+  }
+
+  /**
+   * 🔴 2026-09-29 輪詢 5 秒還是找不到「儲存」按鈕（排除純粹是時機問題），
+   * 但不知道這次畫面上實際長怎樣——跟 closeListing.js 當初找「確認送出」
+   * 反覆猜文字踩過的坑一樣，這次不繼續猜按鈕文字可能變成什麼，直接把
+   * 找不到時畫面上所有看起來像可點擊元素的候選文字都倒出來，照抄
+   * closeListing.js 的 `collectClickableTexts()` 同一套做法。
+   *
+   * 🔴🔴 第一版含「隱藏」元素、取字串結尾 800 字，本人重試撈到的整段
+   * 全是網站共用頁首／頁尾連結（登出、網站地圖、Line找客服……）跟一個
+   * 日期選擇器元件，一個「儲存」都沒看到——這些頁首頁尾連結全部標著
+   * 隱藏，`findSubmitAncestor()` 本來就要求元素可見才會比對，隱藏元素
+   * 對這次診斷沒有意義，卻佔掉大部分篇幅把真正有用的內容擠出截斷範圍。
+   * 改成只列可見元素（跟 `findSubmitAncestor()` 篩選條件一致），雜訊
+   * 濾掉之後才看得到表單本身实际有的內容。
+   */
+  function collectClickableTexts(root) {
+    const els = [...root.querySelectorAll("button, a, span, div, label, input")];
+    const texts = els
+      .filter(visible)
+      .map((e) => {
+        const own = e.tagName === "INPUT" ? String(e.value || "").trim() : ownText(e);
+        return own ? `<${e.tagName.toLowerCase()}>${own}` : null;
+      })
+      .filter((t) => t && t.length <= 60);
+    return [...new Set(texts)].join(" | ").slice(-1500);
   }
 
   async function until(fn, timeout = 8000, step = 150) {
@@ -147,12 +254,17 @@
     let applied = 0, failed = 0;
     const appliedSelects = []; // 🔴 給下面的「設完再回頭驗證」用，記下這次真的設成功的 select 欄位
     const appliedTexts = []; // 🔴 同上，文字欄位也要回頭補一次，見下方說明
+    const appliedRadios = []; // 🔴 同上，單選鈕（例如「是社區大樓」）也要回頭補一次，見下方說明
     for (const [name, info] of Object.entries(fields)) {
       try {
         if (info.type === "radio") {
           const group = allByName(name).filter((i) => i.type === "radio");
           const target = group.find((i) => i.value === info.value);
-          if (target) { if (!target.checked) target.click(); applied++; } else failed++;
+          if (target) {
+            if (!target.checked) target.click();
+            applied++;
+            appliedRadios.push({ name, info });
+          } else failed++;
         } else if (info.type === "checkbox-group") {
           const group = allByName(name).filter((i) => i.type === "checkbox");
           if (group.length) {
@@ -203,7 +315,7 @@
       }
     }
 
-    if (appliedSelects.length || appliedTexts.length) {
+    if (appliedSelects.length || appliedTexts.length || appliedRadios.length) {
       await sleep(1500);
       for (const { name, info } of appliedSelects) {
         const el = byName(name);
@@ -233,6 +345,21 @@
           el.value = info.value;
           fire(el, ["input", "change", "blur"]);
         }
+      }
+      /**
+       * 🔴 2026-09-28 本人截圖抓到第三個受害者：「社區大樓」下拉選單裡
+       * 「九川木目心」已經是對的值，但上面「是社區大樓/建案」那顆單選鈕
+       * 沒被勾選，紅字「社區大樓為必填選項，請選擇」——跟門牌號碼同一種
+       * 病灶（設完之後被某個更晚發生的變更事件延遲重置），只是這次受害
+       * 的是單選鈕不是文字欄位。不特別去確認是哪個欄位的 change 觸發了
+       * 重置，直接對所有套用成功過的單選鈕在這裡統一補勾一次——`target.
+       * checked` 已經是對的就不會誤觸發多餘的 click（既有邏輯本來就有
+       * `if (!target.checked)` 判斷，幂等安全）。
+       */
+      for (const { name, info } of appliedRadios) {
+        const group = allByName(name).filter((i) => i.type === "radio");
+        const target = group.find((i) => i.value === info.value);
+        if (target && !target.checked) target.click();
       }
     }
 
@@ -458,8 +585,47 @@
       await sleep(1000);
       const emptyRequired = scanEmptyRequired();
       if (emptyRequired.length) return { ok: false, error: "送出前檢查：還有必填欄位是空的，沒有點送出", emptyRequired, confirmedBoxes, capturedFieldsResult, photoResult };
-      const submitBtn = findSubmitAncestor(document.body);
-      if (!submitBtn) return { ok: false, error: "填完了，但找不到「儲存」按鈕，沒有送出", confirmedBoxes, capturedFieldsResult, photoResult };
+      /**
+       * 🔴 2026-09-29 本人連續兩輪撞到「填完了，但找不到「儲存」按鈕」——
+       * 上一輪明明才用 `ownText()` 修法成功找到同一顆按鈕，這次卻完全
+       * 找不到，原本這裡是只檢查一次就下定論，沒有給按鈕時間出現／變成
+       * 可見。改用既有的 `until()` 輪詢，跟表單填寫那段的既有做法一致
+       * ——不管是按鈕本身晚一點才渲染出來、還是暫時被別的東西擋住變成
+       * 不可見，多等一下比只看一次更穩。
+       */
+      let submitBtn = await until(() => findSubmitAncestor(document.body), 5000);
+      /**
+       * 🔴🔴🔴 2026-09-29 本人確認橘色「儲存」按鈕視覺正常、手動點擊能
+       * 送出成功，但放大範圍＋濾掉隱藏元素之後的候選清單依然完全沒有
+       * 「儲存」兩個字——文字比對這條路線确定走不通，不是時機或範圍
+       * 問題。文字找不到才退回用顏色找（見 `findSubmitByColor()`），
+       * 兩種找法都失敗才真的算找不到。
+       */
+      let usedColorFallback = false;
+      let colorMatchDebug = "";
+      if (!submitBtn) {
+        submitBtn = await until(() => findSubmitByColor(document.body), 3000);
+        usedColorFallback = !!submitBtn;
+        /**
+         * 🔴 2026-09-29 「取最後一個」是不是真的對症下藥不能只憑猜，把
+         * 這次顏色找法實際點中的元素長什麼樣子（標籤、自己的文字、在
+         * 畫面上的座標）記下來——下次不管成功還是失敗，都能直接對照這
+         * 個元素是不是真的「儲存」，不用再靠結果反推。
+         */
+        if (submitBtn) {
+          const r = submitBtn.getBoundingClientRect();
+          colorMatchDebug = `<${submitBtn.tagName.toLowerCase()}>own="${ownText(submitBtn)}" value="${submitBtn.value || ""}" 位置=(${Math.round(r.left)},${Math.round(r.top)})`;
+        }
+      }
+      if (!submitBtn) {
+        return {
+          ok: false,
+          error: `填完了，但找不到「儲存」按鈕，沒有送出，畫面目前看到的候選文字：${collectClickableTexts(document.body)}`,
+          confirmedBoxes,
+          capturedFieldsResult,
+          photoResult,
+        };
+      }
       submitBtn.click();
 
       /**
@@ -483,7 +649,16 @@
        * `offsetParent !== null` 濾掉隱藏元素，不會再撈到看不見的下拉選項
        * ②長度上限放寬到 200 字，完整句子不要被切斷。
        */
-      await sleep(2000);
+      /**
+       * 🔴 2026-09-28 換第二筆物件測試，社區/門牌/標題等已知欄位問題都
+       * 修好之後，這次紅字乾脆完全消失（連前一輪的「物件名稱已被使用」
+       * 都不見了，猜測是這輪關閉步驟這次真的把舊物件清掉了），但畫面
+       * 還是卡住沒跳轉——目前能找到的欄位層級問題都已經排除，剩下最
+       * 可能的解釋是固定等 2 秒本來就不夠：本人送出當下常常要等系統
+       * 跑完驗證/查重才會真的跳轉，改成用既有的 until() 輪詢，最多等
+       * 8 秒、只要提早跳轉就提早結束，不用每次都乾等滿整段時間。
+       */
+      await until(() => location.pathname !== "/rent/post/add", 8000);
       if (location.pathname === "/rent/post/add") {
         const leafTexts = (filterFn) =>
           [...document.querySelectorAll("div,span,p,label,li,button,a")]
@@ -522,10 +697,10 @@
           const allShort = [...new Set(leafTexts(() => true))].join(" | ").slice(0, 600);
           error = `按了送出，還停在原頁面，沒找到紅字，改列出畫面目前所有短文字供本人／我自己判讀：${allShort}`;
         }
-        return { ok: false, error, confirmedBoxes, capturedFieldsResult, photoResult };
+        return { ok: false, error, confirmedBoxes, capturedFieldsResult, photoResult, nativeConfirmSeen, usedColorFallback, colorMatchDebug };
       }
 
-      return { ok: true, confirmedBoxes, capturedFieldsResult, photoResult };
+      return { ok: true, confirmedBoxes, capturedFieldsResult, photoResult, nativeConfirmSeen, usedColorFallback, colorMatchDebug };
     } catch (e) {
       return { ok: false, error: String(e && e.message ? e.message : e) };
     }

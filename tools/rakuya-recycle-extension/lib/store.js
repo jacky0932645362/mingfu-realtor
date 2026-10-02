@@ -102,7 +102,9 @@ export function dueForRecycle(list, now = new Date()) {
 
 /** 設定（後台網址／LINE 通知）跟快照分開存，options.html 那頁在改的就是這個 */
 const SETTINGS_KEY = "rr:settings";
-const DEFAULT_SETTINGS = { manageUrl: "", postUrl: "", lineToken: "", lineTarget: "", cycleDays: 5, coverSticker: null };
+const DEFAULT_SETTINGS = { manageUrl: "", postUrl: "", lineToken: "", lineTarget: "", cycleDays: 5, coverSticker: null,
+  // 太平洋官網下架檢查（2026-10-02）：每天固定時間檢查，發現官網已無此物件就自動在樂屋關閉
+  delistEnabled: false, delistTime: "09:00", delistEveryDays: 1, delistAutoClose: true };
 
 export async function loadSettings() {
   const o = await chrome.storage.local.get(SETTINGS_KEY);
