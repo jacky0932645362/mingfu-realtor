@@ -328,11 +328,43 @@ function rentRows(d, o) {
 
 /* ───────── 標題／描述 ───────── */
 
-/** 型錄標題常帶「租-」「售-」這種內部前綴，591 不需要 */
+/**
+ * 型錄標題常帶「租-」「售-」這種內部前綴，591 不需要。
+ *
+ * 2026-10-02 本人回報樂屋物件名稱「每次都會出現 ?萬（價格）」（例：「【房仲蕭邦】遠雄質感三房含車含管
+ * 可寵 2萬」），不要。查出來：貼型錄「網址」自動解析時標題是從愛屋頁面的 <title> 標籤抓的，那個標籤
+ * 會在標題後面接一個空白＋價格（「租-長虹天擎3房平車全配 2.3萬」），但頁面上看得到的標題本身沒有
+ * （對兩戶真實物件分別核對過）。手動 Ctrl+A 貼整頁那條路抓到的是頁面上的標題，所以沒這個尾巴——
+ * 這就是為什麼「每次」出現（本人幾乎都是貼網址）。價格 591／樂屋都有自己的欄位，標題不需要，
+ * 而且樂屋標題只收 25 字，這個尾巴白占 3～6 個字。
+ *
+ * 只拿掉「結尾、前面隔著空白」的「數字＋萬／億／元」：型錄接上去的價格永遠長這樣；標題中間或沒隔空白
+ * 的字（「月租2萬三房」「管理費3600元」）是本人自己打的內容，不動。
+ */
 export function cleanTitle(raw) {
   return String(raw || "")
     .replace(/^\s*[租售]\s*[-－—–]\s*/, "")
+    .replace(/\s+[\d,.]+\s*(?:萬|億|元)\s*$/, "")
     .trim();
+}
+
+/**
+ * 「物件名稱開頭」（⚙ 我的資料，2026-10-02 本人要求）：每一戶標題最前面固定加的字，例如
+ * 【房仲蕭邦】。本人原本是每一戶自己手打進標題（樂屋「物件名稱」欄，見他貼的真實畫面
+ * 「【房仲蕭邦】花漾天鵝✨高樓層三房平車✨全配」），現在改成設一次、自動加。
+ *
+ * - 標題已經是這個開頭就不重複加（重新解析、按「套用」建議標題都不會疊兩層）。
+ * - oldPrefix：本人改了設定再按儲存時，把目前標題最前面的「舊開頭」換成新的，標題其他地方
+ *   本人手動改過的字原封不動；標題本來就沒有舊開頭（本人刪掉或自己改過）就只補新的。
+ * - 不加分隔空格：開頭怎麼寫就怎麼接，【房仲蕭邦】花漾天鵝 這種不需要空格；真的要空格就寫在標題裡。
+ */
+export function applyTitlePrefix(title, prefix, oldPrefix = "") {
+  let t = String(title || "").trim();
+  const old = String(oldPrefix || "").trim();
+  if (old && t.startsWith(old)) t = t.slice(old.length).trim();
+  const p = String(prefix || "").trim();
+  if (!t || !p || t.startsWith(p)) return t; // 標題本身是空的就維持空的，不要讓「只有開頭」的標題看起來像合格的
+  return p + t;
 }
 
 export function titleCheck(title) {
@@ -346,8 +378,10 @@ export function titleCheck(title) {
 /**
  * 用資料裡真的有的東西拼一個建議標題（社區＋格局＋租住條件／車位），不捏造。
  * 只是建議，畫面上要人按一下才會套。
+ * prefix：「物件名稱開頭」設定（見 applyTitlePrefix）。建議標題也要帶開頭，不然按「套用」會把
+ * 本人設好的開頭整個蓋掉；開頭佔掉的字數要從 30 字上限裡扣，不然建議本身就超標。
  */
-export function suggestTitle(d, o) {
+export function suggestTitle(d, o, prefix = "") {
   const bits = [];
   if (d.community) bits.push(d.community);
   if (d.room) bits.push(`${d.room}房${d.hall ? `${d.hall}廳` : ""}`);
@@ -362,7 +396,10 @@ export function suggestTitle(d, o) {
     if (o.facing) bits.push(o.facing);
   }
   const t = bits.join(" ");
-  return [...t].length >= DEFAULTS.titleMin ? [...t].slice(0, DEFAULTS.titleMax).join("") : "";
+  if ([...t].length < DEFAULTS.titleMin) return "";
+  const p = String(prefix || "").trim();
+  const room = Math.max(DEFAULTS.titleMax - [...p].length, 0);
+  return p + [...t].slice(0, room).join("");
 }
 
 /** 規格摘要（只放資料裡有的） */

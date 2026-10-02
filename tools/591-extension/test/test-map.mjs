@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseListing, listingNoFromUrl } from "../lib/parser.js";
-import { derive, buildRows, buildPayload, launchUrl, cleanTitle, titleCheck, suggestTitle, buildDescription, factsLine, fillTail, descRisks } from "../lib/map591.js";
+import { derive, buildRows, buildPayload, launchUrl, cleanTitle, titleCheck, suggestTitle, applyTitlePrefix, buildDescription, factsLine, fillTail, descRisks } from "../lib/map591.js";
 import { findRisks, findMarkdown } from "../lib/risk.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +48,38 @@ const SETTINGS = { name: "蕭茗馥", phone: "0932-645-362", line: "0932645362",
   eq("租：標題去掉「租-」", title, "好好窩大2房");
   eq("租：標題 6 字剛好過", titleCheck(title).ok, true);
   eq("租：建議標題只用真的有的資料", suggestTitle(d, o), "和築好好窩 2房2廳 含管理費 附機車位 3樓");
+
+  /* 愛屋頁面 <title> 會在標題後面接「空白＋價格」，本人不要這個尾巴出現在 591／樂屋標題（2026-10-02） */
+  eq("標題：拿掉結尾的「2萬」", cleanTitle("租-遠雄質感三房含車含管可寵 2萬"), "遠雄質感三房含車含管可寵");
+  eq("標題：拿掉結尾的小數價格「1.8萬」", cleanTitle("兩房兩衛拎包入住 1.8萬"), "兩房兩衛拎包入住");
+  eq("標題：出售的「1698萬」也拿掉（租-售-前綴照樣拿掉）", cleanTitle("售-沙鹿全新前院四房透天 1698萬"), "沙鹿全新前院四房透天");
+  eq("標題：拿掉結尾的「25000元」", cleanTitle("租-好好窩大2房 25000元"), "好好窩大2房");
+  eq("標題：拿掉結尾的「1.2億」", cleanTitle("近中科靜宜透天別墅 1.2億"), "近中科靜宜透天別墅");
+  eq("標題：價格前面沒隔空白的是本人自己打的字，不動（月租2萬三房）", cleanTitle("租-月租2萬三房含車"), "月租2萬三房含車");
+  eq("標題：價格不在結尾不動", cleanTitle("租-三房 2萬 可寵"), "三房 2萬 可寵");
+  eq("標題：沒有價格尾巴原樣（只拿掉前綴）", cleanTitle("租-好好窩大2房"), "好好窩大2房");
+  eq("標題：數字結尾但不是價格單位不動（2房）", cleanTitle("和築好好窩 2房"), "和築好好窩 2房");
+  eq("標題：全形空白隔開的價格也拿掉", cleanTitle("租-三房含車　2萬"), "三房含車");
+  eq("標題：空字串／null 不丟例外", [cleanTitle(""), cleanTitle(null)], ["", ""]);
+
+  /* 「物件名稱開頭」（⚙ 我的資料，2026-10-02 本人要求）：例如【房仲蕭邦】，每戶標題最前面固定加 */
+  eq("開頭：標題最前面固定加上、不另外加分隔", applyTitlePrefix(title, "【房仲蕭邦】"), "【房仲蕭邦】好好窩大2房");
+  eq("開頭：標題已經是這個開頭就不重複加（重新解析／按套用都不會疊兩層）", applyTitlePrefix("【房仲蕭邦】好好窩大2房", "【房仲蕭邦】"), "【房仲蕭邦】好好窩大2房");
+  eq("開頭：沒設開頭就原樣", applyTitlePrefix(title, ""), "好好窩大2房");
+  eq(
+    "開頭：改設定時只把最前面的舊開頭換成新的，標題其他本人手改過的字不動",
+    applyTitlePrefix("【房仲蕭邦】花漾天鵝✨高樓層三房平車✨全配", "｜蕭邦｜", "【房仲蕭邦】"),
+    "｜蕭邦｜花漾天鵝✨高樓層三房平車✨全配",
+  );
+  eq("開頭：清空設定會把標題最前面的舊開頭拿掉", applyTitlePrefix("【房仲蕭邦】好好窩大2房", "", "【房仲蕭邦】"), "好好窩大2房");
+  eq("開頭：標題本來就沒有舊開頭（本人自己刪掉了）→ 只補新開頭", applyTitlePrefix("好好窩大2房", "【新】", "【房仲蕭邦】"), "【新】好好窩大2房");
+  eq("開頭：標題是空的就維持空的，不會變成「只有開頭」卻看起來合格", applyTitlePrefix("", "【房仲蕭邦】"), "");
+  eq("開頭：建議標題也帶開頭（按「套用」才不會把設好的開頭蓋掉）", suggestTitle(d, o, "【房仲蕭邦】"), "【房仲蕭邦】和築好好窩 2房2廳 含管理費 附機車位 3樓");
+  eq(
+    "開頭：建議標題加了開頭總長度仍守 30 字上限（開頭佔掉的字從本文扣）",
+    [...suggestTitle(d, o, "【房仲蕭邦】房仲蕭邦專屬")].length,
+    30,
+  );
   eq("租：規格摘要", factsLine(d, o), "2房2廳1衛｜權狀 29.7 坪（主＋附屬 20.2 坪）｜3樓／共15樓｜和築好好窩｜坐西朝東");
   const desc = buildDescription(d, o, SETTINGS);
   eq("租：描述含補充說明那行", /✨租金含管理費，附機車位/.test(desc), true);

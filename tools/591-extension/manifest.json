@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "物件上架助手",
-  "version": "0.5.5",
+  "version": "0.5.7",
   "description": "把愛屋電子型錄（或自己打的物件文字）貼進來，一鍵把每一格、文案、照片填進 591／樂屋的出售／出租刊登表單。「保存資料」與「立即支付」永遠由你自己按。",
   "permissions": ["storage"],
   "host_permissions": [

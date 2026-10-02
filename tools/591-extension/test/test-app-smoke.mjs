@@ -118,6 +118,31 @@ try {
   await page.waitForTimeout(200);
   eq("純文字：照片訊息", await page.textContent("#photos-msg"), "型錄文字裡沒有照片網址。");
   eq("純文字：照片連結格空、提示去貼", /沒有照片/.test(await page.textContent("#photo-link-msg")), true);
+
+  /* 物件名稱開頭（⚙ 我的資料，2026-10-02 本人要求）：設一次，每戶標題最前面自動加 */
+  await page.click("#clear");
+  await page.fill("#s-title-prefix", "【房仲蕭邦】");
+  await page.click("#s-save");
+  await page.fill("#raw", fx("catalog-rent-markdown.txt"));
+  await page.click("#parse");
+  await page.waitForTimeout(300);
+  eq("開頭：解析後標題最前面自動加上", await page.inputValue("#title"), "【房仲蕭邦】好好窩大2房");
+  eq("開頭：建議標題也帶開頭", await page.textContent("#title-suggest-text"), "【房仲蕭邦】和築好好窩 2房2廳 含管理費 附機車位 3樓");
+  await page.click("#title-apply");
+  eq("開頭：按「套用」建議標題後開頭還在、沒被蓋掉", await page.inputValue("#title"), "【房仲蕭邦】和築好好窩 2房2廳 含管理費 附機車位 3樓");
+  eq(
+    "開頭：標題 29 字，591 合格但樂屋上限 25 字會被截 → ④ 先提醒（只提醒、不擋）",
+    await page.textContent("#title-msg"),
+    "29 字，在 6～30 之間；⚠ 樂屋上限 25 字，上樂屋會被截掉最後 4 字",
+  );
+  await page.fill("#s-title-prefix", "｜蕭邦｜");
+  await page.click("#s-save");
+  eq("開頭：改設定按儲存，標題最前面的舊開頭換成新的、其他字不動", await page.inputValue("#title"), "｜蕭邦｜和築好好窩 2房2廳 含管理費 附機車位 3樓");
+  await page.fill("#s-title-prefix", "");
+  await page.click("#s-save");
+  eq("開頭：清空設定按儲存，標題最前面的開頭拿掉", await page.inputValue("#title"), "和築好好窩 2房2廳 含管理費 附機車位 3樓");
+  eq("開頭：標題 23 字沒超過樂屋上限就不提醒", /樂屋上限/.test(await page.textContent("#title-msg")), false);
+  eq("開頭：這一段沒有 JS 錯誤", errors, []);
   await page.close();
 } finally {
   await browser.close();

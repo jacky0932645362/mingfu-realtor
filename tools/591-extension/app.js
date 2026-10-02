@@ -8,9 +8,9 @@
  * 使用者就不用再右鍵複製連結。textarea 本身只收純文字，所以要在 paste 事件裡讀。
  */
 import { parseListing, photoLinkReport, photosFromCatalogHtml, listingNoFromUrl, isCatalogPage, soleCatalogUrl, isCatalogHtml, catalogTextFromHtml, withShowAddr, photoUrlKey } from "./lib/parser.js";
-import { derive, buildRows, buildPayload, titleCheck, cleanTitle, suggestTitle, buildDescription, descRisks, DEFAULTS, fillTail } from "./lib/map591.js";
+import { derive, buildRows, buildPayload, titleCheck, cleanTitle, suggestTitle, applyTitlePrefix, buildDescription, descRisks, DEFAULTS, fillTail } from "./lib/map591.js";
 import { findMarkdown } from "./lib/risk.js";
-import { buildRakuya } from "./lib/rakuya-map.js";
+import { buildRakuya, RAKUYA_TITLE_MAX } from "./lib/rakuya-map.js";
 import { TAIL_COLORS, normalizeTailStyle, tailStyleActive, lineStyleCss, tailStartIndex, HEAD_FONT_SIZE } from "./lib/tailStyle.js";
 
 const $ = (id) => document.getElementById(id);
@@ -19,7 +19,7 @@ const hasChrome = typeof chrome !== "undefined" && !!(chrome.runtime && chrome.r
 const SETTINGS_KEY = "listing:settings";
 
 /* ───────── 我的資料 ───────── */
-const DEFAULT_SETTINGS = { name: "", phone: "", line: "", company: "", contract: DEFAULTS.contract, descHead: DEFAULTS.descHead, tail: "", tailStyle: normalizeTailStyle(null), coverSticker: null };
+const DEFAULT_SETTINGS = { name: "", phone: "", line: "", company: "", contract: DEFAULTS.contract, descHead: DEFAULTS.descHead, titlePrefix: "", tail: "", tailStyle: normalizeTailStyle(null), coverSticker: null };
 let settings = { ...DEFAULT_SETTINGS, tailStyle: normalizeTailStyle(DEFAULT_SETTINGS.tailStyle) }; // tailStyle 是巢狀物件，spread 只會複製參照，這裡另外複製一份避免共用到同一份 lines[]
 
 async function loadSettings() {
@@ -45,6 +45,7 @@ function renderSettings() {
   $("s-company").value = settings.company;
   $("s-contract").value = settings.contract;
   $("s-head").value = settings.descHead;
+  $("s-title-prefix").value = settings.titlePrefix;
   $("s-tail").value = settings.tail;
   $("ts-size").value = settings.tailStyle.size;
   $("ts-bold").checked = settings.tailStyle.bold;
@@ -197,6 +198,7 @@ function refreshDescPreview() {
     .join("");
 }
 async function saveSettings() {
+  const oldTitlePrefix = settings.titlePrefix || "";
   settings = {
     name: $("s-name").value.trim(),
     phone: $("s-phone").value.trim(),
@@ -204,6 +206,7 @@ async function saveSettings() {
     company: $("s-company").value.trim(),
     contract: $("s-contract").value,
     descHead: $("s-head").value.trim(),
+    titlePrefix: $("s-title-prefix").value.trim(),
     tail: $("s-tail").value,
     tailStyle: normalizeTailStyle(currentTailStyle()),
     coverSticker: settings.coverSticker || null, // 不是表單欄位，是 cs-file/cs-remove 直接改 settings.coverSticker，這裡接住舊值一起存
@@ -223,6 +226,9 @@ async function saveSettings() {
     const k = rows.find((r) => r.label === "委託書");
     if (k) k.value = settings.contract;
     renderRows();
+    /* 標題不整個重算（本人可能已經手動改過），只把最前面的舊開頭換成新的；描述原本就是整個重算 */
+    $("title").value = applyTitlePrefix($("title").value, settings.titlePrefix, oldTitlePrefix);
+    refreshTitle();
     $("desc").value = buildDescription(listing, derived, settings);
     refreshDesc();
   }
@@ -426,7 +432,7 @@ async function run() {
       : `依據：謄本用途「${derived.tengben || "資料沒有，先當住家用"}」→ 法定用途「${derived.legal}」；類型「${listing.kind || "—"}」＋樓高 ${listing.total ?? "—"} 層 → 型態「${derived.type}」。認得的組合會直接開 591 第②頁，不認得的外掛會在第①頁幫你點。`;
 
   renderRows();
-  $("title").value = cleanTitle(listing.rawTitle);
+  $("title").value = applyTitlePrefix(cleanTitle(listing.rawTitle), settings.titlePrefix);
   refreshTitle();
   $("desc").value = buildDescription(listing, derived, settings);
   refreshDesc();
@@ -493,8 +499,13 @@ function refreshNeed() {
 }
 function refreshTitle() {
   const t = titleCheck($("title").value);
-  flash($("title-msg"), t.msg, t.ok ? "ok" : "bad");
-  const sug = listing ? suggestTitle(listing, derived) : "";
+  /* 樂屋「物件名稱」上限只有 25 字（591 是 30），超過的字上樂屋時會被截掉（見 buildRakuya 的
+     title25）。以前標題沒有固定開頭，這個差距比較少撞到；加了「物件名稱開頭」之後開頭先佔掉幾個字，
+     標題很容易落在 26～30 字之間——591 合格、樂屋卻會被截，所以在這裡先講。只提醒、不擋。 */
+  const over = t.len - RAKUYA_TITLE_MAX;
+  if (t.ok && over > 0) flash($("title-msg"), `${t.msg}；⚠ 樂屋上限 ${RAKUYA_TITLE_MAX} 字，上樂屋會被截掉最後 ${over} 字`, "warn");
+  else flash($("title-msg"), t.msg, t.ok ? "ok" : "bad");
+  const sug = listing ? suggestTitle(listing, derived, settings.titlePrefix) : "";
   $("title-suggest").hidden = !sug || sug === $("title").value.trim();
   $("title-suggest-text").textContent = sug;
   refreshRisks();

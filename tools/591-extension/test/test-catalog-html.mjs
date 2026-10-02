@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isCatalogHtml, catalogTextFromHtml, soleCatalogUrl, decodeHtmlEntities, withShowAddr, photosFromCatalogHtml, listingNoFromUrl } from "../lib/parser.js";
 import { parseListing } from "../lib/parser.js";
+import { cleanTitle } from "../lib/map591.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fx = (name) => fs.readFileSync(path.join(here, "fixtures", name), "utf8");
@@ -229,6 +230,26 @@ eq("空字串 → false", isCatalogHtml(""), false);
     photosFromCatalogHtml(html, "AA0000002").length,
     16,
   );
+}
+
+/**
+ * ───────── 貼網址自動解析：標題不要帶「價格尾巴」（本人 2026-10-02 回報樂屋物件名稱每次都出現「2萬」）─────────
+ * 型錄頁的 <title> 標籤會在標題後面接「空白＋價格」，catalogTextFromHtml() 用的是這個標籤，所以
+ * rawTitle 帶著價格（上面各段都還是這樣斷言，沒動）；真正進到 591／樂屋標題欄之前要經過 cleanTitle()。
+ * 這裡用四份真實型錄頁（出租、出售都有，價格有小數也有四位整數）確認一路下來標題乾淨。
+ */
+{
+  const cases = [
+    ["catalog-real-page.html", "兩房兩衛拎包入住"],
+    ["catalog-real-page-cn-numeral-street.html", "專售近中科靜宜沙鹿雙車美墅"],
+    ["catalog-real-page-points-m.html", "有樂仕兩房車位高樓海景房傢俱電全配含管含網路可貓可拜拜"],
+    ["catalog-real-page-points-s.html", "沙鹿全新前院四房透天"],
+  ];
+  for (const [file, want] of cases) {
+    const raw = parseListing(catalogTextFromHtml(fx(file))).rawTitle;
+    eq(`${file}：rawTitle 還是帶價格（來源 <title> 標籤）`, /\s[\d,.]+(萬|億|元)$/.test(raw), true);
+    eq(`${file}：進標題欄前 cleanTitle() 拿掉前綴與價格尾巴`, cleanTitle(raw), want);
+  }
 }
 
 console.log(`\n${pass} 過、${fail} 沒過`);

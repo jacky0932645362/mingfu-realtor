@@ -38,7 +38,10 @@
     <label>經紀業名稱（文案落款用）<input id="s-company" placeholder="例：太平洋房屋 ○○加盟店" /></label>
     <label>委託書預設<select id="s-contract"><option>有簽訂</option><option>無簽訂</option></select></label>
     <label>描述抬頭<input id="s-head" placeholder="例：☆ 物件特色" /></label>
+    <label>物件名稱開頭<input id="s-title-prefix" placeholder="例：【房仲蕭邦】" /></label>
   </div>
+  <p class="hint">物件名稱開頭：每一戶標題（④ 的廣告標題、樂屋的物件名稱）最前面固定加的字，留空就不加。
+    開頭佔掉的字也算進標題字數：591 上限 30 字，<b>樂屋上限 25 字</b>（超過的會被截掉，④ 會提醒）。</p>
   <label class="block">固定尾段（選填）：每一戶描述最後固定接的一段，例如電話、LINE、店名。留空就不加。
     <code>{{name}}</code> <code>{{phone}}</code> <code>{{line}}</code> <code>{{company}}</code> 會自動換成上面填的。
     <textarea id="s-tail" rows="5" spellcheck="false" placeholder="例：歡迎來電預約看屋 {{phone}}（{{name}}）　LINE：{{line}}　{{company}}"></textarea>
