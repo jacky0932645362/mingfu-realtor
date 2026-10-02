@@ -30,8 +30,9 @@ export async function fetchCatalogListing(catalogUrl, { timeoutMs = 15000 } = {}
   return { ok: true, listing };
 }
 
+/** freshRent：這次抓到的型錄租金，給價格變動通知用（見 lib/price-watch.js），租金讀不到就是 null */
 export async function checkExistence(snapshot) {
   const fetched = await fetchCatalogListing(snapshot.catalogUrl);
   if (!fetched.ok) return { verdict: "fetch_failed", error: fetched.error };
-  return compareListing(snapshot.listing, fetched.listing);
+  return { ...compareListing(snapshot.listing, fetched.listing), freshRent: fetched.listing.rent ?? null };
 }

@@ -66,5 +66,17 @@ await t("checkExistence：同一戶 → same；欄位對不起來 → different"
   } finally { restore(); }
 });
 
+await t("checkExistence：把這次型錄抓到的租金一起回傳（freshRent，給價格變動通知用）", async () => {
+  const restore = mockFetchOnce(async () => ({ ok: true, status: 200, text: async () => REAL_HTML }));
+  try {
+    const first = await fetchCatalogListing("https://example.com/Ecatalog.aspx?No=TEST");
+    assert.equal(first.listing.rent, 18000); // 這份真實型錄是「兩房兩衛拎包入住 1.8萬」
+    const snap = newSnapshot({ listing: { ...first.listing, rent: 20000 }, catalogUrl: "https://example.com/Ecatalog.aspx?No=TEST" });
+    const r = await checkExistence(snap);
+    assert.equal(r.verdict, "same");
+    assert.equal(r.freshRent, 18000);
+  } finally { restore(); }
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

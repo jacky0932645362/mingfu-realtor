@@ -23,6 +23,7 @@ import { derive, buildPayload, buildDescription, cleanTitle } from "./lib/map591
 import { buildRakuya } from "./lib/rakuya-map.js";
 import { listingNoFromUrl } from "./lib/parser.js";
 import { checkPacific } from "./lib/pacific-check.js";
+import { recordRentObservation, priceLinks } from "./lib/price-watch.js";
 
 const ALARM_NAME = "rr:sweep";
 const ALARM_PERIOD_MINUTES = 60; // 每小時醒來看一次有沒有到期的，不是「每小時都刪除重刊一次」
@@ -119,6 +120,42 @@ function renderRentedOut(snap, mismatchedFields) {
 }
 function renderCheckFailing(snap, failStreak) {
   return `⚠️ 存在檢查連續 ${failStreak} 次抓不到\n\n${label(snap)}\n愛屋連結：${snap.catalogUrl}\n找時間自己點開看一下是不是連結失效了。\n⏱ ${nowTaipei()}`;
+}
+
+/* ───────── 價格變動通知（邏輯在 lib/price-watch.js）───────── */
+
+const fmtRent = (n) => Number(n).toLocaleString("en-US");
+
+function renderPriceChanged(entry, snap) {
+  const delta = entry.newRent - entry.oldRent;
+  const links = priceLinks(snap);
+  const linkLines = [
+    links.rakuyaEdit && `✏️ 樂屋修改：${links.rakuyaEdit}`,
+    links.catalog && `🔗 愛屋型錄：${links.catalog}`,
+    links.pacific && `🔗 太平洋官網：${links.pacific}`,
+  ].filter(Boolean);
+  return [
+    "💰 租金有變動，樂屋要改價",
+    "",
+    `${entry.no ? entry.no + " " : ""}${entry.title}`,
+    `租金：${fmtRent(entry.oldRent)} → ${fmtRent(entry.newRent)}（${delta > 0 ? "+" : "-"}${fmtRent(Math.abs(delta))}）`,
+    `來源：${entry.sources.join("、")}`,
+    ...(linkLines.length ? ["", ...linkLines] : []),
+    `⏱ ${nowTaipei()}`,
+  ].join("\n");
+}
+
+/**
+ * 檢查物件時順便看租金：有變動就寫進「價格變動通知」清單，新增或又變價才推 LINE。
+ * snap 要是 list 裡的同一個物件，rentSeen 才會跟著呼叫端的 saveSnapshots(list) 一起存。
+ * notify=false（立即檢查只回報）只記清單、不推 LINE。
+ */
+async function observeRent(snap, { source, nowRent, baselineRent, notify = true }) {
+  const { status, entry } = await recordRentObservation(snap, { source, nowRent, baselineRent, title: titleOf(snap) });
+  if (status === "none") return null;
+  await pushDebug("price", `${snap.no || snap.id}（${source}）租金 ${fmtRent(entry.oldRent)} → ${fmtRent(entry.newRent)}：${status}`);
+  if (notify && (status === "added" || status === "updated")) await pushLine(renderPriceChanged(entry, snap));
+  return { status, oldRent: entry.oldRent, newRent: entry.newRent };
 }
 
 /* ───────── 開分頁 → 注入內容腳本 → 呼叫它 → 拿結果 → 關分頁 ───────── */
@@ -586,6 +623,10 @@ async function recycleOne(list, snap, settings) {
   await pushDebug("recycleOne", `開始處理 ${snap.no || snap.id}，先跑存在檢查`);
   const check = await checkExistence(snap);
   await pushDebug("recycleOne", `存在檢查結果：verdict=${check.verdict}${check.error ? ` error=${check.error}` : ""}${check.mismatchedFields ? ` 對不起來的欄位=${check.mismatchedFields.join(",")}` : ""}`);
+  // 確定是同一戶（same）才看租金；型錄已經變成別戶的話，租金差多少都沒意義
+  if (check.verdict === "same") {
+    await observeRent(findById(list, snap.id), { source: "catalog", nowRent: check.freshRent, baselineRent: snap.listing?.rent });
+  }
   await markChecked(list, snap.id, check);
   await saveSnapshots(list); // 每筆處理完就存一次，中途中斷不會整批丟（同 property-watch 的原則）
 
@@ -840,6 +881,10 @@ export async function runDelistSweep({ dryRun = false } = {}) {
     if (r.baseline) item.pacificBaseline = r.baseline;
     await pushDebug("delist", `${snap.no || snap.id}：${r.verdict}${r.error ? " " + r.error : ""}${r.reasons ? " " + r.reasons.join("、") : ""}${r.notes?.length ? " " + r.notes.join("、") : ""}`);
     const entry = { id: snap.id, no: snap.no, verdict: r.verdict, reasons: r.reasons, notes: r.notes, error: r.error };
+    // 官網還在（same）才看租金；只回報模式也記進價格變動清單，只是不推 LINE
+    if (r.verdict === "same") {
+      entry.priceChange = await observeRent(item, { source: "pacific", nowRent: r.page?.rent ?? r.baseline?.rent, baselineRent: item.pacificBaseline?.rent, notify: !dryRun });
+    }
     if (r.verdict === "delist") {
       item.lastPacificResult = dryRun ? "delist_dryrun" : "delist";
       await saveSnapshots(list);

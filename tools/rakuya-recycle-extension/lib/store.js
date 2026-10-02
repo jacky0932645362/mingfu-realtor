@@ -100,6 +100,18 @@ export function dueForRecycle(list, now = new Date()) {
   return list.filter((s) => s.status === "active" && s.nextRecycleAt && new Date(s.nextRecycleAt) <= now);
 }
 
+/** 價格變動通知清單（邏輯在 lib/price-watch.js，這裡只管存讀），options.html 那頁直接顯示 */
+const PRICE_CHANGES_KEY = "rr:priceChanges";
+
+export async function loadPriceChanges() {
+  const o = await chrome.storage.local.get(PRICE_CHANGES_KEY);
+  return Array.isArray(o[PRICE_CHANGES_KEY]) ? o[PRICE_CHANGES_KEY] : [];
+}
+
+export async function savePriceChanges(list) {
+  await chrome.storage.local.set({ [PRICE_CHANGES_KEY]: list });
+}
+
 /** 設定（後台網址／LINE 通知）跟快照分開存，options.html 那頁在改的就是這個 */
 const SETTINGS_KEY = "rr:settings";
 const DEFAULT_SETTINGS = { manageUrl: "", postUrl: "", lineToken: "", lineTarget: "", cycleDays: 5, coverSticker: null,

@@ -1,4 +1,5 @@
-import { loadSettings, saveSettings, loadSnapshots, loadDebug, clearDebug } from "./lib/store.js";
+import { loadSettings, saveSettings, loadSnapshots, loadDebug, clearDebug, loadPriceChanges, savePriceChanges } from "./lib/store.js";
+import { priceLinks, markPriceChangeDone } from "./lib/price-watch.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -98,6 +99,8 @@ async function render() {
         .join("")
     : `<tr><td colspan="5">目前沒有追蹤中的物件——在樂屋貼文的描述裡放太平洋房屋連結、按下上架，就會自動開始追蹤。</td></tr>`;
 
+  renderPriceChanges(list, await loadPriceChanges());
+
   const debug = await loadDebug();
   const debugEl = $("debugLog");
   debugEl.textContent = debug.length
@@ -107,6 +110,42 @@ async function render() {
   // 每次重畫都停在捲軸原本的位置（通常是最上面＝最舊的），本人不知道要
   // 自己往下捲，截圖給我的常常是舊資料。改成每次重畫都自動捲到最新一行。
   debugEl.scrollTop = debugEl.scrollHeight;
+}
+
+/**
+ * 價格變動通知清單（邏輯在 lib/price-watch.js）。連結不用存在清單裡的舊值，每次畫的時候
+ * 從「現在」的快照重新組——樂屋重刊之後 rakuyaId 會換，存死的修改連結會指到已經刪掉的舊刊登。
+ */
+const fmtRent = (n) => Number(n).toLocaleString("en-US");
+const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "");
+function linkTag(url, text, primary = false) {
+  const href = safeUrl(url);
+  return href ? `<a href="${esc(href)}" target="_blank" rel="noopener"${primary ? ' class="primary"' : ""}>${text}</a>` : "";
+}
+function rentChange(e) {
+  const delta = e.newRent - e.oldRent;
+  return `${fmtRent(e.oldRent)} → <span class="${delta > 0 ? "rent-up" : "rent-down"}">${fmtRent(e.newRent)}</span><br>${delta > 0 ? "+" : "-"}${fmtRent(Math.abs(delta))}`;
+}
+function renderPriceChanges(snaps, changes) {
+  const byId = new Map(snaps.map((s) => [s.id, s]));
+  const pending = changes.filter((e) => !e.done).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  const done = changes.filter((e) => e.done).sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)));
+
+  document.querySelector("#priceTable tbody").innerHTML = pending.length
+    ? pending
+        .map((e) => {
+          const live = byId.get(e.snapId);
+          const links = live ? priceLinks(live) : e.links || {};
+          return `<tr><td>${esc(e.no)}<br>${esc(e.title)}${live ? "" : '<br><span class="warn">（這筆已經不在追蹤清單裡）</span>'}</td><td>${rentChange(e)}</td><td>${esc((e.sources || []).join("、"))}<br>${esc(fmt(e.updatedAt))}</td><td class="links">${linkTag(links.rakuyaEdit, "✏️ 樂屋修改", true)}${linkTag(links.catalog, "愛屋型錄")}${linkTag(links.pacific, "太平洋官網")}</td><td><button class="priceDone" data-id="${esc(e.id)}">已處理</button></td></tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="5">目前沒有價格變動。</td></tr>`;
+
+  $("priceDoneBox").hidden = !done.length;
+  $("priceDoneCount").textContent = String(done.length);
+  document.querySelector("#priceDoneTable tbody").innerHTML = done
+    .map((e) => `<tr><td>${esc(e.no)}<br>${esc(e.title)}</td><td>${rentChange(e)}</td><td>${esc(fmt(e.doneAt))}</td></tr>`)
+    .join("");
 }
 
 const PACIFIC_LABELS = { same: "✅ 官網還在", delist: "⚫️ 官網已下架", delist_dryrun: "⚠️ 疑似下架（未動作）", fetch_failed: "檢查失敗", never_seen: "❓ 官網從沒看到過", no_link: "沒有官網連結" };
@@ -170,7 +209,7 @@ function runDelist(dryRun) {
   $("delistStatus").textContent = "檢查中…（每筆要抓官網，若發現疑似下架會再多確認一次）";
   chrome.runtime.sendMessage({ type: "rr:delist-check", dryRun }, (r) => {
     if (!r?.ok) { $("delistStatus").textContent = `失敗：${r?.error || "沒有回應"}`; render(); return; }
-    const lines = (r.results || []).map((x) => `・${x.no || x.id}：${PACIFIC_LABELS[x.verdict] || x.verdict}${x.reasons?.length ? "（" + x.reasons.join("、") + "）" : ""}${x.error ? "（" + x.error + "）" : ""}${x.delisted === true ? " → 已在樂屋關閉" : x.delisted === false ? " → 樂屋關閉失敗" : ""}${x.notes?.length ? "｜" + x.notes.join("、") : ""}`);
+    const lines = (r.results || []).map((x) => `・${x.no || x.id}：${PACIFIC_LABELS[x.verdict] || x.verdict}${x.reasons?.length ? "（" + x.reasons.join("、") + "）" : ""}${x.error ? "（" + x.error + "）" : ""}${x.delisted === true ? " → 已在樂屋關閉" : x.delisted === false ? " → 樂屋關閉失敗" : ""}${x.notes?.length ? "｜" + x.notes.join("、") : ""}${x.priceChange ? `｜💰租金 ${fmtRent(x.priceChange.oldRent)} → ${fmtRent(x.priceChange.newRent)}，已列入價格變動通知` : ""}`);
     $("delistStatus").textContent = `${dryRun ? "（只回報）" : ""}檢查了 ${r.processed} 筆\n${lines.join("\n")}`;
     render();
   });
@@ -220,6 +259,24 @@ document.querySelector("#snapTable tbody").addEventListener("click", (ev) => {
     $("status").textContent = r?.ok ? `已刪除「${no}」的追蹤資料` : `刪除失敗：${r?.error || "沒有回應"}`;
     render();
   });
+});
+
+/* 價格變動通知：改好價格按「已處理」才會移到下面的已處理區；清除只清已處理的，待處理的不動 */
+document.querySelector("#priceTable tbody").addEventListener("click", async (ev) => {
+  const btn = ev.target.closest(".priceDone");
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    await savePriceChanges(markPriceChangeDone(await loadPriceChanges(), btn.dataset.id));
+  } catch (err) {
+    $("status").textContent = `標記失敗：${err.message}`;
+  }
+  render();
+});
+$("priceDoneClear").addEventListener("click", async () => {
+  if (!confirm("確定清除所有「已處理」的價格變動紀錄嗎？待處理的不會被清掉。")) return;
+  await savePriceChanges((await loadPriceChanges()).filter((e) => !e.done));
+  render();
 });
 
 $("clearDebug").addEventListener("click", async () => {

@@ -18,6 +18,11 @@
   table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
   th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
   .warn { color: #b00; }
+  .rent-up { color: #b00; font-weight: bold; }
+  .rent-down { color: #06c; font-weight: bold; }
+  .links a { display: inline-block; margin-right: 8px; white-space: nowrap; }
+  .links a.primary { font-weight: bold; color: #ff6a00; }
+  button.priceDone { margin-top: 0; padding: 4px 10px; white-space: nowrap; }
   .hint { color: #888; font-size: 12px; margin-top: 2px; }
 </style>
 </head>
@@ -74,6 +79,17 @@
   <button id="save">儲存設定</button>
   <button id="runNow">立即執行一次（測試用，不用等排程）</button>
   <div id="status"></div>
+
+  <h2>💰 價格變動通知（要到樂屋改價的）</h2>
+  <p class="hint">每次檢查物件（重刊前的愛屋存在檢查、太平洋官網下架檢查）發現租金跟上次看到的不一樣，就會列在這裡。
+    重刊是照樂屋編輯頁現在的內容重貼，型錄／官網調價之後樂屋沒跟著改，重刊出去的還是舊價——點「樂屋修改」直接開編輯頁改價，改好按「已處理」。
+    有填 LINE 的話，發現變動時也會推播（附同樣的連結）。</p>
+  <table id="priceTable"><thead><tr><th>物件</th><th>租金變動</th><th>偵測</th><th>連結</th><th>操作</th></tr></thead><tbody></tbody></table>
+  <details id="priceDoneBox" style="margin-top:8px;" hidden>
+    <summary class="hint" style="cursor:pointer;">已處理（<span id="priceDoneCount">0</span>）</summary>
+    <table id="priceDoneTable"><thead><tr><th>物件</th><th>租金變動</th><th>處理時間</th></tr></thead><tbody></tbody></table>
+    <button id="priceDoneClear" type="button" style="background:#888;color:#fff;border:none;border-radius:4px;">清除已處理紀錄</button>
+  </details>
 
   <h2>目前追蹤中的物件</h2>
   <table id="snapTable"><thead><tr><th>編號</th><th>狀態</th><th>下次重刊</th><th>已重刊次數</th><th>官網檢查</th><th>操作</th></tr></thead><tbody></tbody></table>

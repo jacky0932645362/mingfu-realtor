@@ -4,6 +4,6 @@
   "type": "module",
   "description": "樂屋出租循環刊登（Chrome 外掛）。沒有任何依賴；package.json 只是為了讓 node 用 ES module 跑 test/。",
   "scripts": {
-    "test": "node test/test-snapshot.mjs && node test/test-store.mjs && node test/test-catalog-check.mjs && node test/test-pacific-check.mjs"
+    "test": "node test/test-snapshot.mjs && node test/test-store.mjs && node test/test-catalog-check.mjs && node test/test-pacific-check.mjs && node test/test-price-watch.mjs"
   }
 }
