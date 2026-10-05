@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8" />
+<title>假的「你的內容」頁（測試用）</title>
+<style>
+  body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+  .side { float: left; width: 260px; }
+  .card { background: #fff; border-radius: 8px; padding: 12px 16px; margin: 0 0 16px 300px; width: 600px; position: relative; }
+  .more { position: absolute; right: 12px; top: 12px; width: 20px; height: 20px; cursor: pointer; }
+  .view { display: block; margin-top: 10px; background: #e4e6eb; text-align: center; padding: 8px; border-radius: 6px; text-decoration: none; color: #050505; }
+  .spacer { height: 900px; }
+</style>
+</head>
+<body>
+<!--
+  照 2026-09-20 抄回的真實結構做的假頁面：
+   ・左側分頁是 <a>：處理中 /my_pending_content/、已發佈 /my_posted_content/、已拒絶、已移除
+   ・每張卡片：「蕭茗馥 發佈到 {社團} · {內文}…… 查看更多」＋ ⋯（aria-label「對蕭茗馥的這則貼文採取的動作」）
+     ＋ 最下面「在社團中查看」<a>，href 是 /groups/<id>/?multi_permalinks=<postId>&…
+   ・🔴 卡片的 ⋯ 選單裡沒有刪除（真 FB 就是這樣），所以這裡點了也只是開個沒用的選單
+   ・已經被 test-fake-post.html 刪掉的（localStorage.fakeDeleted）不再列出，模擬 FB 的「你的內容」會反映刪除
+-->
+<div class="side">
+  <div>台中海線不動產專屬社團 › 你的內容</div>
+  <h2>你的內容</h2>
+  <a href="#pending">處理中 <span>新內容指標</span> 50+ 則貼文</a><br />
+  <a href="#posted">已發佈 <span id="posted-count"></span></a><br />
+  <a href="#declined">已拒絶</a><br />
+  <a href="#removed">已移除</a>
+</div>
+<div id="list"></div>
+<div class="spacer"></div>
+<script>
+  // 4 則本人的貼文：2 則同一篇文案（清水透天）、1 則別篇（覓蜜）、1 則手動貼的（不該被 --match 掃到）
+  const POSTS = [
+    { id: "1001", text: "這間全新整理的漂亮透天，竟然只要 698 萬！ 1.整棟全新翻修,免花大錢整理 2.臨10米路,出入最方便。", photos: 2 },
+    { id: "1002", text: "✨ 本案亮點 ・✔ 朝南黃金座向｜採光通風一級棒 ・✔ 高樓層視野戶", photos: 6 },
+    { id: "1003", text: "這間全新整理的漂亮透天，竟然只要 698 萬！ 1.整棟全新翻修,免花大錢整理（再推一次）", photos: 2 },
+    { id: "1004", text: "今天梧棲漁港的夕陽真美，大家週末有空可以來走走 🌅", photos: 1 },
+  ];
+  const deleted = new Set(JSON.parse(localStorage.getItem("fakeDeleted") || "[]"));
+  const alive = POSTS.filter((p) => !deleted.has(p.id));
+  document.getElementById("posted-count").textContent = `${alive.length} 則貼文`;
+  const list = document.getElementById("list");
+  for (const p of alive) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div><b>蕭茗馥</b> 發佈到 台中海線不動產專屬社團 · <span class="body">${p.text}</span>…… <span>查看更多</span> <span>+${p.photos}</span></div>
+      <div class="more" role="button" tabindex="0" aria-label="對蕭茗馥的這則貼文採取的動作">⋯</div>
+      <a class="view" role="link" aria-label="在社團中查看" href="test-fake-post.html?id=${p.id}&multi_permalinks=${p.id}">在社團中查看</a>
+    `;
+    list.appendChild(card);
+  }
+  // 卡片的 ⋯：真 FB 只有「關閉通知／關閉翻譯／暫停追蹤社團」，這裡照樣不給刪除
+  document.addEventListener("click", (e) => {
+    const m = e.target.closest(".more");
+    if (!m) return;
+    const menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", "動態消息的動態");
+    menu.innerHTML = `<div role="menuitem">關閉這則貼文的通知</div><div role="menuitem">關閉翻譯工具</div>`;
+    document.body.appendChild(menu);
+  });
+</script>
+</body>
+</html>

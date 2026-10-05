@@ -110,6 +110,51 @@ export const DISTRICTS = [
   "其他",
 ] as const;
 
+/** 格局房／廳／衛，各自用這組數字下拉（0～5）。少數超過 5 的特殊格局，表單會退回自訂文字。 */
+export const LAYOUT_COUNT_OPTIONS = ["0", "1", "2", "3", "4", "5"] as const;
+
+/**
+ * 車位類型下拉。⚠️ `fb-copy.ts` 跟 `export-591.ts` 是用 `.includes("平面")` 認出
+ * 「平面車位」當賣點標籤，這裡的字要繼續包含「平面」兩個字，不要改成別的說法。
+ */
+export const PARKING_TYPES = ["無", "平面車位", "機械車位", "坡道平面", "坡道機械"] as const;
+
+/** 座向下拉。資料庫舊資料「坐」「座」混用，這裡統一用「座」。 */
+export const DIRECTIONS = [
+  "座北朝南",
+  "座南朝北",
+  "座東朝西",
+  "座西朝東",
+  "座東北朝西南",
+  "座西南朝東北",
+  "座東南朝西北",
+  "座西北朝東南",
+] as const;
+
+/**
+ * 「3房2廳2衛」→ { rooms: 3, halls: 2, baths: 2 }。
+ *
+ * 原本只活在 `export-591.ts`（591 的房／廳／衛是三個獨立下拉，要拆數字才好對照）；
+ * 物件表單的格局下拉要反過來組字串，用的是同一條規則，搬來這裡讓兩邊共用一份，
+ * 不要各存一份規則、以後改一邊忘記改另一邊。拆不出來（「兩房一廳」「開放式」）回
+ * null，不猜——呼叫端要自己決定拆不出來時怎麼辦（表單退回自訂文字、591 顯示原文）。
+ */
+export function parseLayout(
+  raw: string | null,
+): { rooms: number; halls: number; baths: number } | null {
+  const text = (raw ?? "").trim();
+  if (!text) return null;
+  const rooms = text.match(/(\d+)\s*房/);
+  const halls = text.match(/(\d+)\s*廳/);
+  const baths = text.match(/(\d+)\s*[衛浴]/);
+  if (!rooms) return null;
+  return {
+    rooms: Number(rooms[1]),
+    halls: halls ? Number(halls[1]) : 0,
+    baths: baths ? Number(baths[1]) : 0,
+  };
+}
+
 const STATUS_LABELS: Record<string, string> = Object.fromEntries(
   PROPERTY_STATUSES.map((s) => [s.key, s.label]),
 );
@@ -264,6 +309,17 @@ export async function listProperties(opts?: {
 export async function getProperty(id: string): Promise<PropertyRow | null> {
   await ensurePropertyTable();
   const rows = await db.$queryRaw<PropertyRow[]>`SELECT * FROM property WHERE id = ${id} LIMIT 1`;
+  return rows[0] ? normalize(rows[0]) : null;
+}
+
+/**
+ * 用短碼查物件，後台專用：不限狀態（草稿也查得到）。
+ * 跟 getPublicPropertyBySlug 的差別只有這個 —— 那支是公開頁用的，故意擋草稿／下架。
+ * 「貼官網物件連結」這種後台工具（如智能 DM）要能處理還沒上架的物件，所以另開一支。
+ */
+export async function getPropertyBySlugAnyStatus(slug: string): Promise<PropertyRow | null> {
+  await ensurePropertyTable();
+  const rows = await db.$queryRaw<PropertyRow[]>`SELECT * FROM property WHERE slug = ${slug} LIMIT 1`;
   return rows[0] ? normalize(rows[0]) : null;
 }
 

@@ -1,0 +1,34 @@
+node_modules/
+
+# 🔴 FB 的登入 cookie。等同帳號鑰匙，絕對不要進版控
+auth/
+
+# 每次跑留下的截圖（會累積，而且一定拍得到自己的 FB 首頁內容）
+shots/
+
+# 下載照片用的暫存檔
+tmp/
+
+# inspect 抄回來的畫面結構。裡面會有自己的名字、首頁內容、社團名稱，留在本機
+config/*-dump.json
+
+# 排好的貼文（含還沒公開的文案與物件資訊，留在本機）
+posts/
+
+# 批次刪社團貼文時，每次跑留下「刪掉了哪些」的紀錄（有社團名稱與內文，留在本機）
+deleted-log/
+
+# 端對端測試的沙盒（每次跑會自己重建與清掉）
+test-tmp/
+test-tmp-delete/
+
+# import-groups.mjs 產出的貼上用清單（有社團名稱，留在本機）
+config/groups-for-paste.txt
+
+# 2026-10-05 第一次提交時補上：抓下來的社團清單與各種除錯傾印（有社團名稱、自己的 FB 畫面內容，留在本機）
+config/groups.json
+config/groups-inspect.json
+config/group-survey.json
+config/*-debug.json
+# 誤建的空檔
+/1

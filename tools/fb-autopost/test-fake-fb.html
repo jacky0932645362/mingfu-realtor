@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>假的 FB 首頁（端對端測試用）</title>
+<style>
+  body { font-family: sans-serif; padding: 24px; background: #f0f2f5; }
+  .composer-trigger { background:#fff; border-radius:8px; padding:14px 16px; cursor:pointer; color:#65676b; }
+  .dialog { position:fixed; inset:10% 25%; background:#fff; border-radius:8px; padding:16px; box-shadow:0 0 20px rgba(0,0,0,.3); }
+  .textbox { min-height:120px; border:1px solid #ddd; padding:8px; outline:none; }
+  .publish { margin-top:12px; background:#1877f2; color:#fff; text-align:center; padding:8px; border-radius:6px; cursor:pointer; }
+  #preview img { width:60px; height:60px; object-fit:cover; margin:4px 4px 0 0; }
+</style>
+</head>
+<body>
+
+<!--
+  端對端測試用的假 FB 首頁。
+
+  存在的理由：沒有 FB 帳號也要驗得到 post.mjs 的主迴圈會不會動 ——
+  點開發文框、打字、對答案、上傳照片、按發布，這條路壞掉的話
+  「接上去那天才發現」就太晚了。
+
+  ⚠️ 這一頁刻意做成跟 config/selectors.json 的候選 selector 對得上
+     （role="button" + 「在想些什麼」、role="dialog"、role="textbox" +
+     contenteditable、input[type=file][accept=image/*,video/*]、aria-label="發佈"）。
+     所以它同時也在驗「出廠的那組候選 selector 結構上合不合理」。
+     真的 FB 長什麼樣還是要靠 npm run inspect，這裡驗的是程式的邏輯。
+-->
+
+<div role="button" tabindex="0" class="composer-trigger" onclick="openDialog()">
+  <span>茗馥，在想些什麼？</span>
+</div>
+
+<script>
+function openDialog() {
+  if (document.querySelector('[role="dialog"]')) return;
+  const d = document.createElement('div');
+  d.className = 'dialog';
+  d.setAttribute('role', 'dialog');
+  d.setAttribute('aria-label', '建立貼文');
+  d.innerHTML = `
+    <div style="font-weight:600;margin-bottom:10px">建立貼文</div>
+    <div role="textbox" contenteditable="true" class="textbox"
+         aria-label="茗馥，在想些什麼？"></div>
+    <div role="button" aria-label="相片/影片" onclick="document.getElementById('fi').click()"
+         style="margin-top:10px;color:#1877f2;cursor:pointer">相片/影片</div>
+    <input id="fi" type="file" accept="image/*,video/*" multiple style="display:none"
+           onchange="showPreview(this)">
+    <div id="preview"></div>
+    <div role="button" aria-label="繼續" class="publish" onclick="goSettings()">繼續</div>
+  `;
+  document.body.appendChild(d);
+}
+
+// FB 的發文框是兩段式：打字 →「繼續」→「貼文設定」→「發佈」。
+// 「繼續」只是換頁，不會發出去。這一頁**沒有內文輸入框**，
+// 所以程式不能再用「找有 textbox 的 dialog」那招 —— 假頁面照樣重現這個限制。
+function goSettings() {
+  const d = document.querySelector('[role="dialog"]');
+  const text = d.querySelector('[role="textbox"]').innerText;
+  const count = document.getElementById('preview')?.getAttribute('data-count') || '0';
+  d.remove();
+
+  const s = document.createElement('div');
+  s.className = 'dialog';
+  s.setAttribute('role', 'dialog');
+  s.dataset.text = text;
+  s.dataset.photos = count;
+  s.innerHTML = `
+    <div style="font-weight:600;text-align:center;margin-bottom:10px">貼文設定</div>
+    <div style="color:#65676b;font-size:13px">貼文分享對象<br>所有人</div>
+    <div style="color:#65676b;font-size:13px;margin-top:8px">排程選項<br>立即發佈</div>
+    <div style="color:#65676b;font-size:13px;margin-top:8px">分享到社團</div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <div role="button" aria-label="儲存" style="flex:1;text-align:center;padding:8px;
+           background:#e4e6eb;border-radius:6px;cursor:pointer" onclick="saveDraft()">儲存</div>
+      <div role="button" aria-label="發佈" style="flex:1;text-align:center;padding:8px;
+           background:#1877f2;color:#fff;border-radius:6px;cursor:pointer" onclick="publish()">發佈</div>
+    </div>
+  `;
+  document.body.appendChild(s);
+}
+
+function saveDraft() {
+  const s = document.querySelector('[role="dialog"]');
+  s.remove();
+  const d = document.createElement('div');
+  d.id = 'saved';
+  document.body.appendChild(d);
+}
+
+// FB 選了照片之後會長出縮圖預覽，這裡照做，順便讓測試看得出檔案真的進去了
+function showPreview(input) {
+  const box = document.getElementById('preview');
+  box.innerHTML = '';
+  for (const f of input.files) {
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(f);
+    img.setAttribute('data-name', f.name);
+    box.appendChild(img);
+  }
+  box.setAttribute('data-count', String(input.files.length));
+}
+
+// 真的 FB 送出後視窗會消失，post.mjs 就是靠這個判斷有沒有發成功
+function publish() {
+  const s = document.querySelector('[role="dialog"]');
+  const text = s.dataset.text || '';
+  const count = s.dataset.photos || '0';
+  s.remove();
+  const done = document.createElement('div');
+  done.id = 'posted';
+  done.setAttribute('data-photos', count);
+  done.textContent = text;
+  document.body.appendChild(done);
+}
+</script>
+</body>
+</html>

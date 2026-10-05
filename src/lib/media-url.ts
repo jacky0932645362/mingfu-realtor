@@ -131,6 +131,51 @@ export function parseImageList(raw: string | null | undefined, max = 40): string
   return out;
 }
 
+/**
+ * FB 貼文工廠「手動填一筆」的照片欄專用：一行一個，**網址或桌機路徑都收**。
+ *
+ * ・http(s) 開頭 → 當網址，轉直連（Google Drive／Dropbox 分享連結）
+ * ・其它（`D:\物件照\覓蜜`、`C:\...\01.jpg`、`\\NAS\...`、`~/pics`）→ 原樣留著。
+ *   這是**發文那台桌機上的路徑**：發文時桌機的 preparePhotos() 會處理
+ *   —— 單一圖檔直接用、整個資料夾自動展開成裡面所有圖（依檔名排序，第一張＝封面）。
+ *   瀏覽器讀不到本機檔案，所以這種在後台不會有預覽，是正常的。
+ *
+ * ⚠️ 只給 FB 這條通路用。物件庫的公開物件頁一律要真網址，不能用本機路徑。
+ */
+export function parseFbPhotoLines(raw: string | null | undefined, max = 10): string[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of raw.split(/[\r\n]+/)) {
+    const s = line.trim();
+    if (!s) continue;
+    const v = /^https?:\/\//i.test(s) || /^data:/i.test(s) ? directImageUrl(s) : s;
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/** 這一條照片來源是不是「桌機本機路徑」（不是 http/https/data 網址）。給 UI 決定要不要顯示預覽。 */
+export function isLocalPhotoPath(s: string): boolean {
+  return !/^(https?:|data:)/i.test(s.trim());
+}
+
+/**
+ * FB 貼文工廠「影片」欄位專用：**一支**，網址或桌機路徑都收，規則跟 parseFbPhotoLines 一樣，
+ * 只是只留一支——FB 一篇貼文只掛一支影片，不像照片可以排到 10 張。
+ *
+ * ⚠️ 網址刻意不轉直連（不像 directImageUrl 那樣處理 Google Drive／Dropbox）：
+ *    影片檔通常很大，Drive 分享連結沒有像圖片那樣簡單的直連 CDN 寫法，硬轉只會轉出打不開的網址。
+ *    要嘛貼「本來就是檔案本體」的直連網址（例如 Cloudinary 影片網址），要嘛貼桌機路徑最實際。
+ */
+export function parseFbVideoLine(raw: string | null | undefined): string | null {
+  const s = (raw || "").trim();
+  return s || null;
+}
+
 /** 一行一個 YouTube 連結 → 可嵌入的播放器清單。 */
 export function parseVideoList(raw: string | null | undefined, max = 6): VideoEmbed[] {
   if (!raw) return [];

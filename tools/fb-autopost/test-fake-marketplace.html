@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>假的 Marketplace 刊登表單（抄欄位測試用）</title>
+<style>
+  body { font-family: sans-serif; padding: 24px; background:#f0f2f5; }
+  .row { background:#fff; padding:10px 12px; margin-bottom:8px; border-radius:6px; }
+  .lbl { font-size:13px; color:#65676b; margin-bottom:4px; }
+  input, .combo { width:260px; padding:6px; border:1px solid #ccc; border-radius:4px; }
+  .combo { cursor:pointer; background:#fff; }
+  .portal { position:fixed; top:200px; left:300px; background:#fff; border:1px solid #ccc;
+            border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
+  .portal div { padding:6px 14px; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<!--
+  假的 Marketplace 刊登表單，專門用來驗「抄欄位」那段邏輯。
+
+  刻意重現三個真實的坑（2026-08-25 另一個視窗實抄 591 踩到，
+  FB／Marketplace 是 React 做的，同樣適用）：
+
+    ① 標籤是輸入框的「兄弟節點」，不是父節點也不是 <label for>
+    ② id 是渲染順序給的流水號（`:r1:` / `jsc_c_3`），不能拿來寫 selector
+    ③ 下拉選項 render 在 body 的 portal，不在表單裡面
+
+  ⚠️ 這頁不代表真的 Marketplace 長這樣，它只驗「抄的程式碼會不會抄漏」。
+     真的長什麼樣要靠 npm run inspect。
+-->
+
+<h3>刊登房地產</h3>
+
+<!-- ① 標籤是兄弟節點，而且 id 是流水號（②）-->
+<div class="row">
+  <div class="lbl">售價</div>
+  <div><input id=":r1:" type="text" inputmode="numeric"></div>
+</div>
+
+<div class="row">
+  <div class="lbl">地址</div>
+  <div><input id="jsc_c_3" type="text"></div>
+</div>
+
+<!-- 這一格的 id 是人取的，應該被判定成可以用 -->
+<div class="row">
+  <div class="lbl">房間數</div>
+  <div><input id="bedrooms-field" type="number"></div>
+</div>
+
+<!-- 有 aria-label 的就不該再去旁邊撿標籤 -->
+<div class="row">
+  <div class="lbl">這行不該被當成標籤</div>
+  <div><input id=":r9:" type="text" aria-label="物件描述"></div>
+</div>
+
+<!-- ③ 下拉：點了才在 body 底下長出 portal -->
+<div class="row">
+  <div class="lbl">物件類型</div>
+  <div class="combo" role="combobox" tabindex="0" onclick="openPortal()">請選擇</div>
+</div>
+
+<div class="row">
+  <div class="lbl">照片</div>
+  <input type="file" accept="image/*" multiple>
+</div>
+
+<script>
+function openPortal() {
+  if (document.getElementById('portal')) return;
+  const p = document.createElement('div');
+  p.id = 'portal';
+  p.className = 'portal';
+  p.setAttribute('role', 'listbox');
+  for (const name of ['公寓', '透天', '電梯大樓', '套房', '土地']) {
+    const o = document.createElement('div');
+    o.setAttribute('role', 'option');
+    o.textContent = name;
+    p.appendChild(o);
+  }
+  // 重點：掛在 body 底下，不是掛在那一格表單裡面
+  document.body.appendChild(p);
+}
+// 表單頁不需要點才長出來，直接把下拉展開，測試才抄得到 portal
+window.addEventListener('load', openPortal);
+</script>
+</body>
+</html>

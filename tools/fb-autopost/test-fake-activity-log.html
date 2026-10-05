@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>假的「活動紀錄 → 社團貼文和留言」（端對端測試用）</title>
+<style>
+  body { font-family: sans-serif; padding: 24px; background: #f0f2f5; }
+  .row { background:#fff; border-radius:8px; padding:12px 14px; margin:10px 0; position:relative; }
+  .date { color:#65676b; font-size:13px; }
+  .head { color:#050505; font-size:13px; margin:2px 0; }
+  .more { position:absolute; top:10px; right:10px; cursor:pointer; padding:2px 8px; border-radius:6px; background:#e4e6eb; }
+  .view { color:#1877f2; font-size:13px; }
+  .menu { position:fixed; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.25); border-radius:8px; padding:6px; z-index:10; }
+  .menu [role="menuitem"] { padding:8px 14px; cursor:pointer; border-radius:6px; white-space:nowrap; }
+  .menu [role="menuitem"]:hover { background:#f0f2f5; }
+  .dialog { position:fixed; inset:30% 30%; background:#fff; border-radius:8px; padding:20px; box-shadow:0 0 20px rgba(0,0,0,.3); z-index:20; }
+  .dialog .btnrow { display:flex; gap:10px; margin-top:16px; }
+  .dialog [role="button"] { flex:1; text-align:center; padding:8px; border-radius:6px; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<!--
+  端對端測試用的假「活動紀錄 → 社團貼文和留言」頁。
+
+  ⚠️ 刻意做成跟 config/selectors.json 的 activity_delete 對得上（2026-09-02 本人抄回的真實結構）：
+     ・沒有乾淨的「列」role —— delete-groups.mjs 以那顆 ⋯ 鈕為錨
+     ・⋯ 鈕 aria-label ＝「更多關於蕭茗馥在{社團}社團發佈了貼文。的選項」
+     ・每列有一個 <a aria-label="查看">
+     ・⋯ → role="menu" (portal) → role="menuitem" 刪除貼文 → role="dialog" → role="button" 刪除
+  真的 FB 長什麼樣還是要靠 npm run inspect:activity，這裡驗的是程式邏輯。
+-->
+
+<h3>社團貼文和留言</h3>
+<div role="main" aria-label="活動紀錄項目" id="list"></div>
+
+<script>
+// 測試資料。3 則同一篇文案發到 3 個不同社團（內文一樣、社團名不一樣），外加干擾項。
+// 2026-09-20 補：① 日期是「整組的標頭」，不在列裡（真 FB 就是這樣，每列只有時間）
+//               ② 相片貼文（aria「…新增了 N 張相片。」，列裡沒有內文）——同一社團兩則的 aria 一模一樣、只差日期
+//               ③ 網址帶 ?year=&month= 只顯示那個月（模擬真 FB 的跳月份）
+//               ④ 干擾：一則「回應了誰的貼文」（含「貼文」兩字，但不是貼文，不能被算進去）
+//               ⑤ 第四種貼文（aria 只有「更多選項」）＋ main 裡一顆不是列的「更多選項」干擾（2026-09-20）
+const POSTS = [
+  { g: "海線房地產分享-清水.梧棲.沙鹿.龍井不動產資訊", date: "2026年9月2日", text: "🔥【禾盛晶綻電梯華廈｜關連工業區旁｜輕屋齡2房+平車】🔥 總價598萬", href: "https://www.facebook.com/groups/386749777133691/posts/1001" },
+  { g: "台中海線大小事(沙鹿 龍井 梧棲 清水 大肚)", date: "2026年9月2日", text: "🔥【禾盛晶綻電梯華廈｜關連工業區旁｜輕屋齡2房+平車】🔥 總價598萬", href: "https://www.facebook.com/groups/803643013600085/posts/1002" },
+  { g: "大台中海線山線梧棲沙鹿清水龍井買賣租賃房屋土地", date: "2026年9月2日", text: "🔥【禾盛晶綻電梯華廈｜關連工業區旁｜輕屋齡2房+平車】🔥 總價598萬", href: "https://www.facebook.com/groups/1285333922453583/posts/1003" },
+  { g: "台中海線大小事(沙鹿 龍井 梧棲 清水 大肚)", date: "2026年1月5日", text: "梧棲文化路高樓景觀2房，總價698萬，含平面車位。", href: "https://www.facebook.com/groups/803643013600085/posts/900" },
+  { g: "海線房地產分享-清水.梧棲.沙鹿.龍井不動產資訊", date: "2025年12月10日", text: "沙鹿鎮南路店面，一樓金店面。", href: "https://www.facebook.com/groups/386749777133691/posts/800" },
+  { g: "台中房地產廣告專區", date: "2025年7月30日", photos: 10, href: "https://www.facebook.com/groups/555/posts/730" },
+  { g: "台中房地產廣告專區", date: "2025年7月20日", photos: 10, href: "https://www.facebook.com/groups/555/posts/720" },
+  { g: "海線房地產分享-清水.梧棲.沙鹿.龍井不動產資訊", date: "2025年7月15日", text: "7/15 假日廣告文 沙鹿暘光city雙車電梯豪墅", href: "https://www.facebook.com/groups/386749777133691/posts/715" },
+  { g: "中部房屋買賣網", date: "2025年6月14日", text: "6/14-6/15假日廣告文 沙鹿暘光city雙車電梯豪墅", href: "https://www.facebook.com/groups/666/posts/614" },
+  { g: "中台灣房地產", date: "2025年5月31日", text: "清水全新透天 只要698萬", href: "https://www.facebook.com/groups/777/posts/531" },
+  // 留言／回應（2026-09-20 加）：aria 是「回應了{誰}的貼文」「回覆了{誰}的留言」，--kinds=comments/all 才會被算進去
+  { comment: "回應了陳葶臻的貼文", date: "2025年7月26日", text: "您好：我是太平洋房屋的蕭茗馥，專營台中海線不動產", href: "https://www.facebook.com/groups/888/posts/726" },
+  { comment: "回覆了王正凱的留言", date: "2026年9月7日", text: "您好：我們自己住幸福成喔", href: "https://www.facebook.com/groups/999/posts/907" },
+  // 第三種（2026-09-20 抓到）：aria 只有「更多關於蕭茗馥的選項」，列文字「蕭茗馥 ✨內文…」，同一篇發 3 個社團、內文一模一樣、只有 permalink 不同
+  { bare: true, date: "2025年8月16日", text: "✨超級售,出價就談,稀有物件,來看就對了 ✨屋主花了800多萬，整棟全面整修", href: "https://www.facebook.com/groups/589513464752475/permalink/2467275046976298/" },
+  { bare: true, date: "2025年8月16日", text: "✨超級售,出價就談,稀有物件,來看就對了 ✨屋主花了800多萬，整棟全面整修", href: "https://www.facebook.com/groups/1401713023430770/permalink/4139471589654886/" },
+  { bare: true, date: "2025年8月16日", text: "✨超級售,出價就談,稀有物件,來看就對了 ✨屋主花了800多萬，整棟全面整修", href: "https://www.facebook.com/groups/538451396257259/permalink/9828564287245877/" },
+  // 第四種（2026-09-20 抓到，8/14～8/15 那 59 篇全是這種）：帶縮圖的貼文，⋯ 的 aria 只有「更多選項」，
+  // 列裡直接是內文＋「公開社團 下午12:47」＋查看，沒有「蕭茗馥在XX社團…」那行；同一篇發 3 個社團內文一樣、只有 permalink 不同
+  { media: true, date: "2025年8月15日", text: "📣 龍井-富宇大地全新別墅📣 ㊙️傳統格局 可停多車㊙️ ❌不用2098萬❌", href: "https://www.facebook.com/groups/1080511732646768/permalink/1702713993759869/" },
+  { media: true, date: "2025年8月15日", text: "📣 龍井-富宇大地全新別墅📣 ㊙️傳統格局 可停多車㊙️ ❌不用2098萬❌", href: "https://www.facebook.com/groups/543836080965215/permalink/1040233811325437/" },
+  { media: true, date: "2025年8月15日", text: "📣 龍井-富宇大地全新別墅📣 ㊙️傳統格局 可停多車㊙️ ❌不用2098萬❌", href: "https://www.facebook.com/groups/222222/permalink/333333/" },
+  { media: true, date: "2025年8月14日", text: "꧁ 近捷運藍線B3站、學區旁꧂輕屋齡🌟大地坪臨路美墅|價格好談|稀有釋出", href: "https://www.facebook.com/groups/1934883243223551/permalink/24753228660962352/" },
+  // 同一社團兩篇貼文，查看 連結都只是社團網址（真 FB 常這樣）——不能因為連結一樣被去重成一篇
+  { g: "中台灣房地產", date: "2025年8月13日", text: "8/13 第一篇 禾盛晶綻電梯華廈", href: "https://www.facebook.com/groups/807578849313690/" },
+  { g: "中台灣房地產", date: "2025年8月13日", text: "8/13 第二篇 富宇大地全新別墅", href: "https://www.facebook.com/groups/807578849313690/" },
+];
+
+// 刪掉的記在 localStorage，重新整理之後不會回來（--sweep 要靠這個測）
+const deletedIds = new Set(JSON.parse(localStorage.getItem("fakeDeletedRows") || "[]"));
+
+const qs = new URLSearchParams(location.search);
+const Y = qs.get("year"), M = qs.get("month");
+const 這個月 = (d) => {
+  if (!Y || !M) return true;
+  const m = d.match(/(\d{4})年(\d{1,2})月/);
+  return m && +m[1] === +Y && +m[2] === +M;
+};
+
+const list = document.getElementById("list");
+let lastDate = null;
+// 🔴 模擬真 FB 跳月份的怪毛病：月份畫面一次只給前 2 則就說沒了（has_next_page:false），刪掉幾則才浮出下一批
+let 月份配額 = Y && M ? 2 : Infinity;
+POSTS.forEach((p, i) => {
+  if (!這個月(p.date)) return;
+  if (deletedIds.has(String(i))) return;
+  if (月份配額 <= 0) return;
+  月份配額--;
+  if (p.date !== lastDate) {
+    const h = document.createElement("h4");
+    h.className = "date";
+    h.textContent = p.date; // 🔴 日期標頭獨立一個元素，不在列裡
+    list.appendChild(h);
+    lastDate = p.date;
+  }
+  const row = document.createElement("div");
+  row.className = "row";
+  row.dataset.i = String(i);
+  const head = p.media ? "" : p.bare ? "蕭茗馥" : p.comment ? `蕭茗馥${p.comment}。` : p.photos ? `蕭茗馥在${p.g}新增了 ${p.photos} 張相片。` : `蕭茗馥在${p.g}社團發佈了貼文。`;
+  const ariaLabel = p.media ? "更多選項" : p.bare ? "更多關於蕭茗馥的選項" : `更多關於${head}的選項`;
+  row.innerHTML = `
+    ${p.media ? `<img alt="" width="36" height="36" style="float:left;background:#ccc;margin-right:8px">` : `<div class="head">${head}</div>`}
+    ${p.text ? `<div>${p.text}</div>` : ""}
+    <div class="date">${p.bare ? "公開社團" : "私密社團"} 下午10:34</div>
+    <a role="link" aria-label="查看" href="${p.href}" class="view">查看</a>
+    <div class="more" role="button" tabindex="0"
+         aria-label="${ariaLabel}" data-i="${i}" data-photo="${p.photos ? 1 : 0}">⋯</div>
+  `;
+  list.appendChild(row);
+});
+
+// （「回應了誰的貼文」現在是資料裡可刪的留言列，見 POSTS 最後兩筆；--kinds=posts 不該把它們算進來由測試 ⑤g 驗）
+
+// 干擾項：Messenger 聯絡人的 ⋯（在 role=main 外面；aria 也是「更多關於某某的選項」，真 FB 右上角就有一排）
+const mess = document.createElement("div");
+mess.setAttribute("role", "dialog");
+mess.setAttribute("aria-label", "Messenger");
+mess.innerHTML = `<div role="button" aria-label="更多關於蕭立易的選項">⋯</div><div role="button" aria-label="更多關於蕭茗馥的選項" style="display:none">⋯</div><div role="button" aria-label="更多選項">⋯</div>`;
+document.body.appendChild(mess);
+
+// 干擾項：main 裡一顆「更多選項」但不是列（工具列——旁邊有「公開社團」字樣、沒有貼文連結）。
+// 第四種 aria 太通用，程式要靠「列裡有 permalink 連結」擋掉這種，不然會把它當一則貼文。
+const bar = document.createElement("div");
+bar.className = "toolbar";
+bar.innerHTML = `<span>篩選：公開社團</span> <div role="button" aria-label="更多選項">⋯</div>`;
+list.appendChild(bar);
+
+// 干擾項：一則「心情」（任何 --kinds 都不該掃到）
+const c = document.createElement("div");
+c.className = "row";
+c.innerHTML = `
+  <div class="head">蕭茗馥說喇叭小姐的 Reel 讚。</div>
+  <a role="link" aria-label="查看" href="#c1" class="view">查看</a>
+  <div class="more" role="button" aria-label="更多關於蕭茗馥說喇叭小姐的 Reel 讚。的選項">⋯</div>
+`;
+list.appendChild(c);
+
+document.addEventListener("click", (e) => {
+  const more = e.target.closest('[aria-label*="的選項"], [aria-label="更多選項"]');
+  if (more && more.dataset.i != null) {
+    closeTransient();
+    const menu = document.createElement("div");
+    menu.className = "menu";
+    menu.setAttribute("role", "menu");
+    // 🔴 照 2026-09-02 實抄的真實結構：aria-label「用於管理此動態的選項」，
+    //    裡面只有兩項，而且刪除那項的字就是「刪除」兩個字（不是「刪除貼文」）。
+    menu.setAttribute("aria-label", "用於管理此動態的選項");
+    const r = more.getBoundingClientRect();
+    menu.style.top = Math.min(r.bottom + 4, window.innerHeight - 110) + "px";
+    menu.style.left = Math.max(4, r.left - 120) + "px";
+    menu.innerHTML = more.dataset.photo === "1"
+      ? `<div role="menuitem" data-act="delete" data-i="${more.dataset.i}">刪除</div>`
+      : `
+      <div role="menuitem">從個人檔案隱藏</div>
+      <div role="menuitem" data-act="delete" data-i="${more.dataset.i}">刪除</div>
+    `;
+    document.body.appendChild(menu);
+    return;
+  }
+
+  const del = e.target.closest('[data-act="delete"]');
+  if (del) {
+    const i = del.dataset.i;
+    closeTransient();
+    // 照 2026-09-02 實測的真實確認框：「刪除？ 你刪除的項目將無法還原。」＋ 關閉／刪除／取消
+    const dlg = document.createElement("div");
+    dlg.className = "dialog";
+    dlg.setAttribute("role", "dialog");
+    dlg.innerHTML = `
+      <div role="button" aria-label="關閉" style="position:absolute;top:8px;right:8px">✕</div>
+      <div style="font-weight:600">刪除？</div>
+      <div style="color:#65676b;font-size:13px;margin-top:6px">你刪除的項目將無法還原。</div>
+      <div class="btnrow">
+        <div role="button" aria-label="刪除" style="background:#1877f2;color:#fff" data-confirm="${i}">刪除</div>
+        <div role="button" aria-label="取消" style="background:#e4e6eb">取消</div>
+      </div>
+    `;
+    document.body.appendChild(dlg);
+    return;
+  }
+
+  const confirm = e.target.closest("[data-confirm]");
+  if (confirm) {
+    deletedIds.add(String(confirm.dataset.confirm));
+    localStorage.setItem("fakeDeletedRows", JSON.stringify([...deletedIds]));
+    document.querySelector(`.row[data-i="${confirm.dataset.confirm}"]`)?.remove();
+    closeTransient();
+    return;
+  }
+  if (e.target.closest('[aria-label="取消"]')) closeTransient();
+});
+
+function closeTransient() {
+  document.querySelectorAll(".menu, .dialog").forEach((el) => el.remove());
+}
+</script>
+</body>
+</html>

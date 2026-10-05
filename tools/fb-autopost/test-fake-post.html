@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8" />
+<title>假的貼文頁（測試用）</title>
+<style>
+  body { font-family: sans-serif; background: #f0f2f5; margin: 0; }
+  .dialog { background: #fff; width: 700px; margin: 40px auto; border-radius: 8px; padding: 16px; position: relative; }
+  .more { position: absolute; right: 16px; top: 16px; width: 20px; height: 20px; cursor: pointer; }
+  .feed { width: 700px; margin: 20px auto; background: #fff; padding: 16px; position: relative; }
+  [role="menu"] { position: absolute; right: 40px; top: 40px; background: #fff; border: 1px solid #ccc; padding: 6px; }
+  [role="menuitem"] { padding: 6px 10px; cursor: pointer; }
+  .confirm { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; }
+  .confirm .box { background: #fff; padding: 20px; border-radius: 8px; width: 420px; }
+  .btn { display: inline-block; padding: 8px 16px; margin: 6px; border-radius: 6px; cursor: pointer; background: #e4e6eb; }
+</style>
+</head>
+<body>
+<!--
+  照 2026-09-20 抄回的真實結構：
+   ・貼文開在 dialog（「蕭茗馥的貼文」）裡，沒有 role=article
+   ・dialog 標題列右邊 ⋯：aria-label「對蕭茗馥的這則貼文採取的動作」
+   ・⋯ 選單 aria-label「動態消息的動態」：編輯貼文／刪除貼文／關閉這則貼文的通知／關閉翻譯工具／關閉留言功能
+   ・「刪除貼文」→ dialog aria-label「永久刪除貼文？」，按鈕「刪除」（aria-label=刪除）與「取消」
+   ・🔴 底下動態牆還有**別人**的貼文，也有一顆同名格式的 ⋯（對孫啟維的這則貼文採取的動作）——
+     測「用內文定位、不能拿第一顆」這件事
+   ・刪掉的 id 記在 localStorage.fakeDeleted；再開同一個 id 就顯示「這個內容目前無法顯示」
+-->
+<div id="root"></div>
+<script>
+  const POSTS = {
+    "1001": "這間全新整理的漂亮透天，竟然只要 698 萬！\n1.整棟全新翻修,免花大錢整理\n2.臨10米路,出入最方便。",
+    "1002": "✨ 本案亮點\n・✔ 朝南黃金座向｜採光通風一級棒\n・✔ 高樓層視野戶",
+    "1003": "這間全新整理的漂亮透天，竟然只要 698 萬！\n1.整棟全新翻修,免花大錢整理（再推一次）",
+    "1004": "今天梧棲漁港的夕陽真美，大家週末有空可以來走走 🌅",
+  };
+  const id = new URLSearchParams(location.search).get("id");
+  const deleted = new Set(JSON.parse(localStorage.getItem("fakeDeleted") || "[]"));
+  const root = document.getElementById("root");
+
+  // 別人的貼文永遠在（干擾項，排在我們那則「前面」，測定位）
+  const decoy = `
+    <div class="feed" role="article">
+      <b>孫啟維</b> · 3 小時前<br />急售！沙鹿透天厝，屋主自售，意者私訊。
+      <div class="more" role="button" aria-label="對孫啟維的這則貼文採取的動作">⋯</div>
+    </div>`;
+
+  if (!id || deleted.has(id) || !POSTS[id]) {
+    root.innerHTML = `${decoy}<div class="dialog" role="dialog"><h3>這個內容目前無法顯示</h3><p>此內容目前無法顯示，可能是內容已被刪除。</p></div>`;
+  } else {
+    root.innerHTML = `${decoy}
+      <div class="dialog" role="dialog">
+        <div style="text-align:center;font-weight:bold">蕭茗馥的貼文</div>
+        <div class="more" role="button" tabindex="0" aria-label="對蕭茗馥的這則貼文採取的動作">⋯</div>
+        <div><b>台中海線不動產專屬社團</b><br />蕭茗馥 · 9月10日下午10:10</div>
+        <div class="body" style="white-space:pre-wrap;margin-top:10px">${POSTS[id]}</div>
+      </div>`;
+  }
+
+  document.addEventListener("click", (e) => {
+    const more = e.target.closest('.dialog .more');
+    if (more) {
+      const menu = document.createElement("div");
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", "動態消息的動態");
+      menu.innerHTML = ["編輯貼文", "刪除貼文", "關閉這則貼文的通知", "關閉翻譯工具", "關閉留言功能"]
+        .map((t) => `<div role="menuitem"><span><span>${t}</span></span></div>`)
+        .join("");
+      more.parentElement.appendChild(menu);
+      return;
+    }
+    const item = e.target.closest('[role="menuitem"]');
+    if (item) {
+      const t = item.innerText.trim();
+      item.closest('[role="menu"]').remove();
+      if (t !== "刪除貼文") return;
+      const c = document.createElement("div");
+      c.className = "confirm";
+      c.innerHTML = `
+        <div class="box" role="dialog" aria-label="永久刪除貼文？">
+          <h3>永久刪除貼文？</h3>
+          <p>刪除此貼文後，貼文收到的心情和留言也會一併刪除，且這個動作無法回復。</p>
+          <div role="button" class="btn" aria-label="關閉">✕</div>
+          <div role="button" class="btn" aria-label="刪除" data-act="del">刪除</div>
+          <div role="button" class="btn" aria-label="取消" data-act="cancel">取消</div>
+        </div>`;
+      document.body.appendChild(c);
+      return;
+    }
+    const act = e.target.closest("[data-act]");
+    if (act) {
+      const box = act.closest(".confirm");
+      if (act.dataset.act === "del") {
+        deleted.add(id);
+        localStorage.setItem("fakeDeleted", JSON.stringify([...deleted]));
+        box.remove();
+        // 真 FB 刪完 dialog 會關掉、貼文消失
+        document.querySelector(".dialog").remove();
+      } else {
+        box.remove();
+      }
+    }
+    // 別人貼文的 ⋯：開一個沒有刪除的選單（真 FB 別人的貼文只有檢舉／隱藏之類）
+    const other = e.target.closest('.feed .more');
+    if (other) {
+      const menu = document.createElement("div");
+      menu.setAttribute("role", "menu");
+      menu.innerHTML = `<div role="menuitem">隱藏貼文</div><div role="menuitem">檢舉貼文</div>`;
+      other.parentElement.appendChild(menu);
+    }
+  });
+</script>
+</body>
+</html>

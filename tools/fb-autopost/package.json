@@ -1,0 +1,42 @@
+{
+  "name": "fb-autopost",
+  "private": true,
+  "type": "module",
+  "description": "把 posts/ 裡排好的貼文，用 Playwright 發到本人自己的 FB 個人主頁與社團",
+  "scripts": {
+    "login": "node save-login.mjs",
+    "groups": "node list-groups.mjs",
+    "groups:survey": "node survey-groups.mjs",
+    "inspect": "node inspect-composer.mjs feed",
+    "inspect:marketplace": "node inspect-composer.mjs marketplace",
+    "inspect:marketplace-crosspost": "node inspect-composer.mjs marketplace-crosspost",
+    "inspect:group": "node inspect-composer.mjs group",
+    "inspect:activity": "node inspect-composer.mjs activity",
+    "probe:step2": "node probe-step2.mjs",
+    "post": "node post.mjs",
+    "draft": "node new-post.mjs",
+    "list": "node post.mjs --list",
+    "delete:groups": "node delete-groups.mjs",
+    "post:marketplace": "node post-marketplace.mjs",
+    "test": "node test-humanize.mjs && node test-rhythm.mjs && node test-fb-post.mjs && node test-post-e2e.mjs && node test-delete-e2e.mjs && node test-runner-e2e.mjs",
+    "test:humanize": "node test-humanize.mjs",
+    "test:rhythm": "node test-rhythm.mjs",
+    "test:logic": "node test-fb-post.mjs",
+    "test:e2e": "node test-post-e2e.mjs",
+    "test:delete": "node test-delete-e2e.mjs",
+    "runner": "node runner.mjs",
+    "runner:once": "node runner.mjs --once",
+    "runner:ping": "node runner.mjs --ping",
+    "runner:dry": "node runner.mjs --once --dry",
+    "import:groups": "node import-groups.mjs",
+    "groups:fast": "node list-groups.mjs --fast",
+    "groups:probe": "node probe-member-count.mjs",
+    "test:runner": "node test-runner-e2e.mjs",
+    "runner:attended": "node runner.mjs --attended",
+    "delete:content": "node delete-group-content.mjs",
+    "test:delete-content": "node test-delete-group-content-e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

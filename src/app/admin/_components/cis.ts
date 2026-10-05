@@ -49,3 +49,21 @@ export const cisSectionTitle: React.CSSProperties = {
   textTransform: "uppercase",
   marginBottom: 10,
 };
+
+/**
+ * 可被外層換膚的版本（2026-10-05）：值是 `var(--cis-xxx, 原本的深色)`。
+ * 給好幾個模組共用的小元件（PhotoPicker／VideoPicker／WhenPicker）用——
+ * 放在 FB 貼文工廠（淺色，外層有設 --cis-* 變數）就變淺色，放在其他後台頁（沒設）就維持深色。
+ * ⚠️ 只能用在 style={{}} 裡；SVG 屬性（例如 <Icon color>）跟 canvas 不吃 var()。
+ */
+export const CIS_VAR = {
+  ...CIS,
+  bg: `var(--cis-bg, ${CIS.bg})`,
+  bgSoft: `var(--cis-bgSoft, ${CIS.bgSoft})`,
+  card: `var(--cis-card, ${CIS.card})`,
+  cardBorder: `var(--cis-cardBorder, ${CIS.cardBorder})`,
+  text: `var(--cis-text, ${CIS.text})`,
+  textSub: `var(--cis-textSub, ${CIS.textSub})`,
+  textMute: `var(--cis-textMute, ${CIS.textMute})`,
+  blue: `var(--cis-blue, ${CIS.blue})`,
+};
