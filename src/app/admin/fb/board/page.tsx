@@ -1,4 +1,5 @@
 import { pacificIdFromUrl } from "@/lib/fb-pacific";
+import { recycleDueMap, RECYCLE_DAYS } from "@/lib/fb-recycle";
 import { listBoardRows, isChannel, fmtDateTime, type FbChannel, type BoardStage } from "@/lib/fb-factory";
 import { BoardView, type BoardItem } from "./BoardView";
 
@@ -19,6 +20,7 @@ export default async function BoardPage({
 
   const rows = await listBoardRows(channel);
   const now = Date.now();
+  const dueMap = channel === "post" ? await recycleDueMap(rows.map((r) => r.draftId)) : new Map<string, Date>();
 
   // 日期在伺服器端先排好字串（台灣時間），client 端不用再碰時區
   const items: BoardItem[] = rows.map((r) => ({
@@ -55,7 +57,12 @@ export default async function BoardPage({
     pacificCheckedTs: r.pacificCheckedAt ? +new Date(r.pacificCheckedAt) : 0,
     attentionKind: r.attentionKind,
     hasPendingTask: r.hasPendingTask,
+    recycleEnabled: r.recycleEnabled,
+    recycleState: r.recycleState,
+    recycleNote: r.recycleNote,
+    recycleDueAt: dueMap.get(r.draftId) ? fmtDateTime(dueMap.get(r.draftId)!) : null,
+    recycleOverdue: dueMap.has(r.draftId) && +dueMap.get(r.draftId)! <= now,
   }));
 
-  return <BoardView channel={channel} initialTab={tab} items={items} />;
+  return <BoardView channel={channel} initialTab={tab} items={items} recycleDays={RECYCLE_DAYS} />;
 }

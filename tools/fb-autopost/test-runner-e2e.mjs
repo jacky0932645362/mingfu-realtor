@@ -65,6 +65,8 @@ const 隔離環境 = {
   FB_SKIP_MARKETPLACE: "1",
   // 2026-10-05：每日官網成交檢查會寫正式 DB 的 fb_draft.pacific_*，測試一律關掉
   FB_SKIP_PACIFIC: "1",
+  // 自動重新曝光會在正式 DB 排刪文＋重貼任務，測試一律關掉
+  FB_SKIP_RECYCLE: "1",
   // IG／Threads（2026-09-21）也是直接讀資料庫、打官方 API 的通路，同一條規矩：測試裡明確關掉。
   //（假後台的 claim 不會回 socialTargets，理論上跑不到，但不靠「剛好沒資料」。）
   FB_SKIP_SOCIAL: "1",

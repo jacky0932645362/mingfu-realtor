@@ -133,6 +133,12 @@ export type FbDraftRow = {
   pacific_note?: string | null;
   pacific_checked_at?: Date | null;
   board_archived_at?: Date | null;
+  /** 2026-10-05 自動重新曝光（見 src/lib/fb-recycle.ts） */
+  recycle_enabled?: number | null;
+  recycle_state?: string | null;
+  recycle_json?: string | null;
+  recycle_note?: string | null;
+  recycle_started_at?: Date | null;
   created_at: Date;
   updated_at: Date | null;
 };
@@ -369,6 +375,12 @@ async function ensureFbDraftColumns(): Promise<void> {
     ["pacific_note", "VARCHAR(500) NULL"],
     ["pacific_checked_at", "DATETIME NULL"],
     ["board_archived_at", "DATETIME NULL"],
+    // 第三階段（2026-10-05）：自動重新曝光＝到期先刪社團舊文、刪完再重貼同一批社團
+    ["recycle_enabled", "TINYINT NULL"],
+    ["recycle_state", "VARCHAR(20) NULL"],
+    ["recycle_json", "TEXT NULL"],
+    ["recycle_note", "VARCHAR(500) NULL"],
+    ["recycle_started_at", "DATETIME NULL"],
   ] as const) {
     try {
       await db.$executeRawUnsafe(`ALTER TABLE fb_draft ADD COLUMN IF NOT EXISTS ${name} ${def}`);
@@ -2438,9 +2450,13 @@ export type BoardRow = {
   pacificNote: string | null;
   pacificCheckedAt: Date | null;
   /** attention 的原因：官網下架（多半成交）／發文失敗 */
-  attentionKind: "delisted" | "failed" | null;
+  attentionKind: "delisted" | "failed" | "recycle" | null;
   /** 還有沒發的排程（官網下架但排程還在＝會把成交的物件發出去，要提醒） */
   hasPendingTask: boolean;
+  /** 第三階段（2026-10-05）：自動重新曝光 */
+  recycleEnabled: boolean;
+  recycleState: string | null;
+  recycleNote: string | null;
 };
 
 export async function listBoardRows(channel: FbChannel): Promise<BoardRow[]> {
@@ -2529,6 +2545,10 @@ export async function listBoardRows(channel: FbChannel): Promise<BoardRow[]> {
     const delisted = d.pacific_status === "gone" || d.pacific_status === "changed";
     if (d.board_archived_at) {
       stage = "archived";
+    } else if (d.recycle_state === "paused") {
+      // 自動重新曝光中途失敗：舊文可能已經刪了、新文沒貼，一定要讓本人看到
+      stage = "attention";
+      attentionKind = "recycle";
     } else if (delisted) {
       // 官網下架優先於其他狀態：就算還在排隊，也要先讓本人決定要不要取消（不然會把成交的物件發出去）
       stage = "attention";
@@ -2569,6 +2589,9 @@ export async function listBoardRows(channel: FbChannel): Promise<BoardRow[]> {
       pacificCheckedAt: d.pacific_checked_at || null,
       attentionKind,
       hasPendingTask: Boolean(active),
+      recycleEnabled: d.recycle_enabled === 1,
+      recycleState: d.recycle_state || null,
+      recycleNote: d.recycle_note || null,
     };
   });
 }

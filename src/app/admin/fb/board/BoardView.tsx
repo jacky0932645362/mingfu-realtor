@@ -18,6 +18,7 @@ import {
   checkPacificAllAction,
   resetPacificAction,
   archiveDraftAction,
+  setRecycleAction,
 } from "@/lib/actions/fb-actions";
 import { CIS } from "@/app/admin/fb/_ui/theme";
 import { Icon } from "@/app/admin/_ui/icons";
@@ -52,8 +53,14 @@ export type BoardItem = {
   pacificNote: string | null;
   pacificCheckedAt: string | null;
   pacificCheckedTs: number;
-  attentionKind: "delisted" | "failed" | null;
+  attentionKind: "delisted" | "failed" | "recycle" | null;
   hasPendingTask: boolean;
+  recycleEnabled: boolean;
+  recycleState: string | null;
+  recycleNote: string | null;
+  /** 最近一次發到社團＋N 天（沒有掛在社團上就是 null） */
+  recycleDueAt: string | null;
+  recycleOverdue: boolean;
 };
 
 const TABS: Array<{ key: BoardStage; label: string; color: string }> = [
@@ -88,10 +95,12 @@ export function BoardView({
   channel,
   initialTab,
   items,
+  recycleDays,
 }: {
   channel: FbChannel;
   initialTab: BoardStage;
   items: BoardItem[];
+  recycleDays: number;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<BoardStage>(initialTab);
@@ -111,6 +120,9 @@ export function BoardView({
 
   const bound = items.filter((it) => it.stage !== "archived" && it.pacificUrl).length;
   const active = items.filter((it) => it.stage !== "archived").length;
+  const recycleOn = items.filter((it) => it.recycleEnabled).length;
+  // 自動重新曝光只做一般貼文的社團那篇（刪文工具走不到 Marketplace）
+  const showRecycle = channel === "post" && (tab === "ready" || tab === "waiting" || tab === "done");
 
   const current = TABS.find((t) => t.key === tab)!;
 
@@ -225,12 +237,14 @@ export function BoardView({
           <div className={styles.bannerTitle}>
             <Icon name="refresh" size={16} color="#16a34a" />
             <span>
-              目前設定：物件綁<b style={{ color: "#16a34a" }}>太平洋官網</b>後，桌機每天自動檢查一次，官網下架就移到「需處理物件」
+              目前設定：社團貼文發出 <b style={{ color: "#dc2626" }}>{recycleDays} 天</b>後自動下架、再重新上架一次，讓它回到最前面
             </span>
           </div>
           <div className={styles.bannerSub} style={{ color: CIS.textSub }}>
-            已綁 {bound} / {active} 則（在物件名稱下方按「＋綁官網」，貼網址或只貼 S 編號）。
-            排程到點由桌機自動發文；「發出 7 天後自動下架、再重新上架」<b>還沒啟用</b>（第三階段）。
+            已幫 {recycleOn} 則打開「自動重新曝光」（每則各自開關，預設關）。桌機只在白天 9～21 點、一次一則：先刪社團舊文，刪完才重貼同一批社團；
+            自己動態那篇不動。任何一步失敗會自動關掉、列進「需處理物件」。
+            <br />
+            太平洋官網：已綁 {bound} / {active} 則，桌機每天檢查一次，官網下架就移到「需處理物件」。
             {checkMsg ? (
               <span style={{ display: "block", marginTop: 4, color: CIS.text, fontWeight: 700 }}>{checkMsg}</span>
             ) : null}
@@ -290,18 +304,19 @@ export function BoardView({
                       ? "上次發文"
                       : "發到哪"}
               </th>
+              {showRecycle ? <th>自動重新曝光</th> : null}
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className={styles.emptyCell} style={{ color: CIS.textMute }}>
+                <td colSpan={showRecycle ? 7 : 6} className={styles.emptyCell} style={{ color: CIS.textMute }}>
                   {q ? "沒有符合搜尋的物件" : `「${current.label}」目前沒有物件`}
                 </td>
               </tr>
             ) : (
-              rows.map((it) => <Row key={it.draftId} it={it} tab={tab} channel={channel} />)
+              rows.map((it) => <Row key={it.draftId} it={it} tab={tab} channel={channel} showRecycle={showRecycle} />)
             )}
           </tbody>
         </table>
@@ -421,7 +436,50 @@ function PacificTag({ it }: { it: BoardItem }) {
   );
 }
 
-function Row({ it, tab, channel }: { it: BoardItem; tab: BoardStage; channel: FbChannel }) {
+function RecycleSwitch({ it }: { it: BoardItem }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const mid = it.recycleState === "deleting" || it.recycleState === "reposting";
+  const toggle = () => {
+    const on = !it.recycleEnabled;
+    if (on && !window.confirm(`打開「${it.title}」的自動重新曝光？
+
+到期後桌機會自動：先刪掉這則在社團的舊文 → 刪完再重貼到同一批社團（會真的發出去）。自己動態那篇不動。`)) return;
+    start(async () => {
+      const res = await setRecycleAction(it.draftId, on);
+      if (!res.ok) window.alert(res.error || "設定失敗");
+      else if (res.message) window.alert(res.message);
+      router.refresh();
+    });
+  };
+  return (
+    <div className={styles.recycleCell}>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={it.recycleEnabled}
+        aria-label="自動重新曝光"
+        onClick={toggle}
+        disabled={pending}
+        className={styles.switch}
+        style={{ background: it.recycleEnabled ? "#16a34a" : "#cbd5e1" }}
+      >
+        <span className={styles.knob} style={{ transform: it.recycleEnabled ? "translateX(18px)" : "translateX(0)" }} />
+      </button>
+      {mid ? (
+        <span className={styles.recycleNow}>{it.recycleState === "deleting" ? "♻ 刪舊文中" : "♻ 重貼排隊中"}</span>
+      ) : it.recycleEnabled && it.recycleDueAt ? (
+        <span className={styles.muted}>
+          {it.recycleOverdue ? "已到期，白天 9～21 點會處理" : `預計下架 ${it.recycleDueAt}`}
+        </span>
+      ) : it.recycleNote ? (
+        <span className={styles.muted}>{it.recycleNote}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function Row({ it, tab, channel, showRecycle }: { it: BoardItem; tab: BoardStage; channel: FbChannel; showRecycle: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const scheduleHref = `/admin/fb/schedule?draft=${it.draftId}&channel=${channel}`;
@@ -532,6 +590,28 @@ function Row({ it, tab, channel }: { it: BoardItem; tab: BoardStage; channel: Fb
           取消封存
         </button>
       );
+  } else if (it.attentionKind === "recycle") {
+    status = <Pill tone="red">⚠ 重新曝光中斷</Pill>;
+    sub = "已自動關掉，沒有重試";
+    time = it.lastPostedAt || "—";
+    col5 = (
+      <span className={styles.reason} title={it.recycleNote || ""}>
+        {it.recycleNote || "自動重新曝光途中失敗"}
+      </span>
+    );
+    actions = (
+      <>
+        <Link href={scheduleHref} className={styles.act} style={{ background: "#ea580c" }}>
+          手動排重貼
+        </Link>
+        <button type="button" onClick={() => run(() => setRecycleAction(it.draftId, true))} disabled={pending} className={styles.act} style={{ background: "#16a34a" }}>
+          重新打開
+        </button>
+        <button type="button" onClick={() => run(() => setRecycleAction(it.draftId, false))} disabled={pending} className={styles.act} style={{ background: "#64748b" }}>
+          知道了
+        </button>
+      </>
+    );
   } else if (it.attentionKind === "delisted") {
     status = <Pill tone="red">⚠ 官網已下架</Pill>;
     sub = it.hasPendingTask ? "還有排程沒發！" : "可能已成交";
@@ -604,6 +684,11 @@ function Row({ it, tab, channel }: { it: BoardItem; tab: BoardStage; channel: Fb
       </td>
       <td className={styles.num}>{time}</td>
       <td className={styles.col5}>{col5}</td>
+      {showRecycle ? (
+        <td>
+          <RecycleSwitch it={it} />
+        </td>
+      ) : null}
       <td>
         <div className={styles.acts}>{actions}</div>
       </td>

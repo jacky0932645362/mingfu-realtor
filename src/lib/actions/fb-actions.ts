@@ -79,6 +79,7 @@ import {
   resetDraftPacific,
   setDraftArchived,
 } from "@/lib/fb-pacific";
+import { setRecycleEnabled } from "@/lib/fb-recycle";
 
 type Result = { ok: boolean; error?: string; id?: string; message?: string };
 
@@ -1041,5 +1042,18 @@ export async function archiveDraftAction(draftId: string, archived: boolean): Pr
     return { ok: true, message: archived ? "已封存" : "已取消封存" };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "封存失敗" };
+  }
+}
+
+/** 看板「自動重新曝光」開關（第三階段，2026-10-05）。 */
+export async function setRecycleAction(draftId: string, on: boolean): Promise<Result> {
+  const denied = await guard();
+  if (denied) return { ok: false, error: denied };
+  try {
+    const r = await setRecycleEnabled(draftId, on);
+    revalidateAll();
+    return r;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "設定失敗" };
   }
 }

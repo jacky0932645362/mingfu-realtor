@@ -716,6 +716,22 @@ async function 每日官網檢查() {
   }
 }
 
+/* ── 自動重新曝光（2026-10-05，上架／下架看板第三階段，見 src/lib/fb-recycle.ts） ──
+ * 每輪推進一次：到期的文案先排「刪社團舊文」，刪完才排「重貼同一批社團」，一次只跑一則、白天才開新的一輪。
+ * 它只是幫你「排任務」，真正刪／發的還是下面同一套刪文與發文流程（節奏保護一樣有效）。
+ * FB 登入無效時不排（排了也只會逾時、然後把那則標成中斷）。錯誤全吞，不能害主迴圈掛掉。 */
+let _fbRecycle = null;
+async function 推進重新曝光() {
+  if (process.env.FB_SKIP_RECYCLE === "1") return;
+  if (!authSessionStatus().有登入) return;
+  try {
+    _fbRecycle ??= await import(`${pathToFileURL(PROJECT_ROOT).href}/src/lib/fb-recycle.ts`);
+    for (const line of await _fbRecycle.advanceRecycles()) log(line);
+  } catch (e) {
+    log(`⚠ 自動重新曝光推進失敗（不影響發文）：${String(e?.message || e).slice(0, 120)}`);
+  }
+}
+
 async function main() {
   if (!TOKEN || TOKEN.length < 16) {
     console.error("\n❌ 沒有設定 FB_RUNNER_TOKEN（或不到 16 字）。");
@@ -796,6 +812,9 @@ async function main() {
   }
 
   if (ONCE) {
+    // 🔴 正式環境是 Windows 排程每 5 分鐘跑一次 --once（不是下面的無限迴圈），所以這兩件也要放在這裡
+    await 每日官網檢查();
+    await 推進重新曝光();
     for (let i = 0; i < 3; i += 1) {
       if (!(await 撈一輪())) break;
     }
@@ -805,6 +824,7 @@ async function main() {
 
   for (;;) {
     await 每日官網檢查();
+    await 推進重新曝光();
     try {
       const 有做事 = await 撈一輪();
       if (!有做事) log(`沒有到期的工作，${POLL_MS / 60_000} 分鐘後再看`);
