@@ -36,8 +36,29 @@ import {
 } from "@/lib/fb-factory";
 import { getProperty } from "@/lib/property";
 import { directImageUrl, parseImageList } from "@/lib/media-url";
+import { getIdentity, listIdentities, reportIdentityLogin, type FbIdentityRow } from "@/lib/fb-identity";
+import { identityIdForDisplay } from "@/lib/fb-identity-core";
 
 export const dynamic = "force-dynamic";
+
+/** 給 runner 的身分資料。登入檔路徑不在這裡（網站不知道桌機上的檔案），runner 用 authKey 自己組。 */
+function identityPayload(row: FbIdentityRow) {
+  return { id: identityIdForDisplay(row.id), kind: row.kind, name: row.name, authKey: row.auth_key };
+}
+
+/**
+ * 這個任務的身分能不能發。不能發（身分被停用、被刪、是還沒支援的粉絲專頁）回一句原因，
+ * 呼叫端把任務標失敗——**絕對不退回主帳號去發**：拿錯帳號發文是這個功能最不能發生的事。
+ */
+async function resolveIdentityForTask(identityId: string | null | undefined): Promise<
+  { ok: true; identity: FbIdentityRow } | { ok: false; reason: string }
+> {
+  const identity = await getIdentity(identityId);
+  if (!identity) return { ok: false, reason: `發文身分已經被刪掉了（${identityId}），這筆沒發` };
+  if (identity.is_active !== 1) return { ok: false, reason: `發文身分「${identity.name}」已停用，這筆沒發（要發就去「發文身分」頁重新啟用）` };
+  if (identity.kind !== "personal") return { ok: false, reason: `發文身分「${identity.name}」是${identity.kind === "page" ? "粉絲專頁，粉專發文還沒支援" : "不支援的類型"}，這筆沒發` };
+  return { ok: true, identity };
+}
 
 function checkAuth(req: Request): string | null {
   const token = process.env.FB_RUNNER_TOKEN;
@@ -87,6 +108,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, task: null, note: "文案不存在，工作標記失敗" });
     }
 
+    // 2026-10-07 發文身分：用哪個帳號發。身分有問題就標失敗（不退回主帳號）
+    const idRes = await resolveIdentityForTask(task.identity_id);
+    if (!idRes.ok) {
+      await failTask(task.id, idRes.reason, 0);
+      return NextResponse.json({ ok: true, task: null, note: idRes.reason });
+    }
+
     const run = await getTaskRun(task.id);
     const items = await getTaskItems(task.id);
     const pending = items.filter((i) => i.status === "pending");
@@ -125,6 +153,7 @@ export async function POST(req: Request) {
         autoPublish: run?.auto_publish === 1,
         attempts: run?.attempts ?? 1,
       },
+      identity: identityPayload(idRes.identity),
       draft: {
         id: draft.id,
         title: draft.title,
@@ -200,6 +229,13 @@ export async function POST(req: Request) {
     const task = await claimNextDeleteTask(workerId);
     if (!task) return NextResponse.json({ ok: true, task: null });
 
+    // 2026-10-07 發文身分：刪文要用「當初發文的帳號」登入去刪。身分有問題就標失敗、不退回主帳號。
+    const idRes = await resolveIdentityForTask(task.identity_id);
+    if (!idRes.ok) {
+      await failDeleteTask(task.id, idRes.reason, 0);
+      return NextResponse.json({ ok: true, task: null, note: idRes.reason });
+    }
+
     const run = await getDeleteTaskRun(task.id);
     // 桌機要知道「去哪幾個社團的『你的內容』找」（2026-09-20 起主要走這條，帶照片的貼文活動紀錄看不到）：
     //   「按社團清空」→ 就那一個社團；「按工作流清空」／進階排程 → 這則文案發過的全部社團。
@@ -207,7 +243,7 @@ export async function POST(req: Request) {
     const group = task.group_id ? await getFbGroup(task.group_id) : null;
     const groups = group
       ? [{ id: group.id, name: group.name, url: group.url }]
-      : await postedGroupsForDraft(task.draft_id);
+      : await postedGroupsForDraft(task.draft_id, task.identity_id);
     return NextResponse.json({
       ok: true,
       task: {
@@ -221,7 +257,29 @@ export async function POST(req: Request) {
         autoConfirm: run?.auto_confirm === 1,
         attempts: run?.attempts ?? 1,
       },
+      identity: identityPayload(idRes.identity),
     });
+  }
+
+  /* ══════════════ 發文身分（2026-10-07）══════════════ */
+
+  /* ── 桌機每一輪先問：有哪些身分？（要去檢查各自的登入檔、回報有沒有效） ── */
+  if (action === "identities") {
+    const rows = await listIdentities({ onlyActive: true });
+    return NextResponse.json({
+      ok: true,
+      identities: rows.filter((r) => r.kind === "personal").map(identityPayload),
+    });
+  }
+
+  /* ── 回報某個身分的登入檔現在有沒有效（網站在 Vercel，讀不到桌機的檔案，只能靠這個） ── */
+  if (action === "identity-login") {
+    const id = String(payload.identityId || "main");
+    const ok = payload.ok === true;
+    const row = await getIdentity(id);
+    if (!row) return NextResponse.json({ ok: false, error: `找不到身分 ${id}` }, { status: 404 });
+    await reportIdentityLogin(row.id, ok, payload.note ? String(payload.note) : undefined);
+    return NextResponse.json({ ok: true });
   }
 
   /* ── 刪除工作收尾 ── */

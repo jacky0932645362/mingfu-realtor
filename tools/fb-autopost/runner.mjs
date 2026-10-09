@@ -40,6 +40,8 @@ import {
   serializePostFile,
   localTimestamp,
   authSessionStatus,
+  authFileForIdentity,
+  identityMatchesJob,
   登入問題說明,
 } from "./_shared.mjs";
 // 擬真模式：認領到工作後、開瀏覽器前先隨機等 0～N 秒，讓實際開跑時間不要永遠落在排程器的 5 分鐘格線上
@@ -62,7 +64,12 @@ const {
   dueFbTasks,
   getTaskRun,
   getFbDraft,
+  getFbTask,
+  getDeleteTask,
 } = _fbFactory;
+// 發文身分（2026-10-07）：Marketplace 這條路是直接讀資料庫，身分也直接從資料庫查
+const _fbIdentity = await import(`${pathToFileURL(PROJECT_ROOT).href}/src/lib/fb-identity.ts`);
+const { getIdentity, listIdentities } = _fbIdentity;
 
 const argv = process.argv.slice(2);
 const flag = (n) => argv.includes(`--${n}`);
@@ -123,6 +130,49 @@ async function call(action, body = {}) {
   }
   if (!res.ok || json.ok === false) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
+}
+
+/* ── 發文身分（2026-10-07）──
+ * 一份工作用哪個帳號發，由後台（claim 回傳的 identity）決定；登入檔路徑由這裡用登入代號自己組
+ * （網站在 Vercel，不知道桌機上的檔案）。主帳號＝原本的 AUTH_FILE，沒新增其他身分時跟以前一模一樣。
+ * 🔴 任何一步算不出這個身分的登入檔，就整份工作標失敗——絕不退回主帳號去發。 */
+const 主帳號身分 = { id: "main", kind: "personal", name: "主帳號", authKey: null };
+
+function 身分資訊(identity) {
+  return identity && typeof identity === "object" ? identity : 主帳號身分;
+}
+
+/** 這個身分的登入檔路徑；代號不合法會丟錯（呼叫端要接住、標失敗）。 */
+function 登入檔(identity) {
+  return authFileForIdentity(身分資訊(identity).authKey);
+}
+
+function 是主帳號(identity) {
+  return !身分資訊(identity).authKey;
+}
+
+/** 登入有問題時給本人看的話：主帳號沿用原本那套；其他身分要講是哪一個、怎麼登入。 */
+function 身分登入說明(identity, file) {
+  const id = 身分資訊(identity);
+  if (是主帳號(id)) return 登入問題說明(file);
+  const s = authSessionStatus(file);
+  return [
+    `發文身分「${id.name}」${!s.檔案存在 ? "還沒存過登入狀態" : "的登入檔裡沒有真正的登入資訊（或已過期）"}。`,
+    `   👉 在桌機雙擊 FB登入-其他帳號.bat，登入代號輸入 ${id.authKey}，登入那個帳號後回視窗按 Enter。`,
+  ].join("\n");
+}
+
+/** 給後台的失敗原因（會顯示在排程任務那一列）。 */
+function 身分登入失敗原因(identity) {
+  const id = 身分資訊(identity);
+  return 是主帳號(id)
+    ? "FB 登入狀態失效，要本人重跑一次登入"
+    : `發文身分「${id.name}」登入狀態失效或還沒登入，要本人重跑一次登入（登入代號 ${id.authKey}）`;
+}
+
+/** 子行程的環境變數：指定這份工作用的登入檔。其他（FB_HOME 等測試用的覆寫）一律原樣帶過去。 */
+function 子行程環境(file) {
+  return { ...process.env, FB_AUTH_FILE: file };
 }
 
 /* ── 把一份工作寫成 post.mjs 看得懂的貼文檔 ── */
@@ -197,10 +247,23 @@ async function 擬真抖動() {
 
 async function 跑一份(job) {
   const { task, draft, targets } = job;
+  const identity = 身分資訊(job.identity);
   const socialTargets = Array.isArray(job.socialTargets) ? job.socialTargets : [];
-  log(`📮 「${draft.title}」→ ${targets.length + socialTargets.length} 個地方`);
+  log(`📮 「${draft.title}」→ ${targets.length + socialTargets.length} 個地方${是主帳號(identity) ? "" : `（身分：${identity.name}）`}`);
   for (const t of socialTargets) log(`   • ${t.platform === "ig" ? "Instagram" : "Threads"}（官方 API）`);
   for (const t of targets) log(`   • ${t.groupName || t.target}`);
+
+  // 🔴 版本錯位保險：後台沒回 identity（後台還是舊版）、但資料庫裡這份工作其實指定了別的身分 → 絕不當主帳號發。
+  //    連 IG／Threads 都先不發（那是主帳號專屬的，其他身分的任務本來就不該有）。測試用假後台時關掉（不碰真資料庫）。
+  if (process.env.FB_SKIP_IDENTITY_DB_CHECK !== "1") {
+    const dbTask = await getFbTask(task.id).catch(() => null);
+    if (dbTask && !identityMatchesJob(dbTask.identity_id, job.identity)) {
+      const 原因 = "後台回的發文身分跟資料庫對不上（後台可能還是舊版沒更新），為了不用錯帳號發文，這份不發";
+      await call("fail", { taskId: task.id, error: 原因 });
+      log(`   ❌ ${原因}`);
+      return;
+    }
+  }
 
   if (DRY) {
     log("   （--dry：不開瀏覽器、不發 IG／Threads，把工作放回去）");
@@ -233,9 +296,18 @@ async function 跑一份(job) {
     return;
   }
 
-  if (!authSessionStatus().有登入) {
-    console.error(登入問題說明());
-    await call("fail", { taskId: task.id, error: "FB 登入狀態失效，要本人重跑一次登入" });
+  // 🔴 用哪個身分的登入檔，算不出來（代號不合法）或登入無效就整份標失敗，絕不退回主帳號去發
+  let authFile;
+  try {
+    authFile = 登入檔(identity);
+  } catch (e) {
+    await call("fail", { taskId: task.id, error: `發文身分「${identity.name}」的登入代號有問題：${e.message}`.slice(0, 400) });
+    log(`   ❌ ${e.message} → 標記失敗`);
+    return;
+  }
+  if (!authSessionStatus(authFile).有登入) {
+    console.error(身分登入說明(identity, authFile));
+    await call("fail", { taskId: task.id, error: 身分登入失敗原因(identity) });
     return;
   }
 
@@ -257,12 +329,14 @@ async function 跑一份(job) {
         cwd: import.meta.dirname,
         stdio: "inherit",
         timeout: POST_JOB_TIMEOUT_MS,
+        env: 子行程環境(authFile),
       })
     : spawnSync(process.execPath, args, {
         cwd: import.meta.dirname,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
         timeout: POST_JOB_TIMEOUT_MS,
+        env: 子行程環境(authFile),
       });
 
   // --attended 走 inherit，輸出已經直接印在畫面上，這裡拿不到字串。
@@ -374,7 +448,24 @@ async function 跑一份Marketplace(task) {
   const run = await getTaskRun(task.id);
   const crosspost = run?.crosspost === 1;
   const draft = await getFbDraft(task.draft_id).catch(() => null);
-  log(`🛒 Marketplace：「${draft?.title || task.draft_id}」${crosspost ? "（含勾社團）" : "（只上 Marketplace）"}`);
+
+  // 發文身分（2026-10-07）：身分被停用／刪掉／不是個人帳號 → 整份標失敗，不退回主帳號
+  const idRow = await getIdentity(task.identity_id).catch(() => null);
+  const identity = idRow ? { id: idRow.id, kind: idRow.kind, name: idRow.name, authKey: idRow.auth_key } : null;
+  log(
+    `🛒 Marketplace：「${draft?.title || task.draft_id}」${crosspost ? "（含勾社團）" : "（只上 Marketplace）"}` +
+      `${identity && !是主帳號(identity) ? `（身分：${identity.name}）` : ""}`,
+  );
+  if (!identity || idRow.is_active !== 1 || idRow.kind !== "personal") {
+    const 原因 = !identity
+      ? `發文身分已經被刪掉了（${task.identity_id}），這筆沒發`
+      : idRow.is_active !== 1
+        ? `發文身分「${identity.name}」已停用，這筆沒發`
+        : `發文身分「${identity.name}」不是個人帳號，Marketplace 發不了`;
+    await failMarketplaceTask(task.id, 原因, 1);
+    log(`   ❌ ${原因}`);
+    return;
+  }
 
   if (DRY) {
     log("   （--dry：不開瀏覽器，把工作放回去）");
@@ -382,9 +473,17 @@ async function 跑一份Marketplace(task) {
     return;
   }
 
-  if (!authSessionStatus().有登入) {
-    console.error(登入問題說明());
-    await failMarketplaceTask(task.id, "FB 登入狀態失效，要本人重跑一次登入", 1);
+  let authFile;
+  try {
+    authFile = 登入檔(identity);
+  } catch (e) {
+    await failMarketplaceTask(task.id, `發文身分「${identity.name}」的登入代號有問題：${e.message}`, 1);
+    log(`   ❌ ${e.message} → 標記失敗`);
+    return;
+  }
+  if (!authSessionStatus(authFile).有登入) {
+    console.error(身分登入說明(identity, authFile));
+    await failMarketplaceTask(task.id, 身分登入失敗原因(identity), 1);
     return;
   }
 
@@ -401,12 +500,18 @@ async function 跑一份Marketplace(task) {
   log(`   ▶ post-marketplace.mjs --publish${crosspost ? " --crosspost" : ""}`);
 
   const r = ATTENDED
-    ? spawnSync(process.execPath, args, { cwd: import.meta.dirname, stdio: "inherit", timeout: SHORT_JOB_TIMEOUT_MS })
+    ? spawnSync(process.execPath, args, {
+        cwd: import.meta.dirname,
+        stdio: "inherit",
+        timeout: SHORT_JOB_TIMEOUT_MS,
+        env: 子行程環境(authFile),
+      })
     : spawnSync(process.execPath, args, {
         cwd: import.meta.dirname,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
         timeout: SHORT_JOB_TIMEOUT_MS,
+        env: 子行程環境(authFile),
       });
 
   const out = ATTENDED ? "" : `${r.stdout || ""}\n${r.stderr || ""}`;
@@ -439,13 +544,24 @@ async function 跑一份Marketplace(task) {
  *   ② 不知道發到哪（groups 空的，例如另一台發的、fb_task_item 沒紀錄）→ 退回舊的活動紀錄路徑 delete-groups.mjs。
  */
 
-async function 跑一份刪除(task) {
+async function 跑一份刪除(task, identityRaw) {
+  const identity = 身分資訊(identityRaw);
+  // 🔴 版本錯位保險（同 跑一份）：後台回的身分要跟資料庫裡這份刪文工作的身分一致，對不上就不刪
+  if (process.env.FB_SKIP_IDENTITY_DB_CHECK !== "1") {
+    const dbTask = await getDeleteTask(task.id).catch(() => null);
+    if (dbTask && !identityMatchesJob(dbTask.identity_id, identityRaw)) {
+      const 原因 = "後台回的發文身分跟資料庫對不上（後台可能還是舊版沒更新），為了不用錯帳號刪文，這份不刪";
+      await call("fail-delete", { taskId: task.id, error: 原因 });
+      log(`   ❌ ${原因}`);
+      return;
+    }
+  }
   const 指紋短版 = task.matchText.length > 24 ? `${task.matchText.slice(0, 24)}…` : task.matchText;
   const groups = Array.isArray(task.groups) ? task.groups.filter((g) => g && g.url) : [];
   log(
     `🗑️  「${task.title}」→ 比對「${指紋短版}」` +
       (groups.length ? `，到 ${groups.length} 個社團的「你的內容」找` : task.groupName ? `（只限社團：${task.groupName}，走活動紀錄）` : "（走活動紀錄）") +
-      `，每個地方最多 ${task.maxItems} 篇`,
+      `，每個地方最多 ${task.maxItems} 篇${是主帳號(identity) ? "" : `（身分：${identity.name}）`}`,
   );
 
   if (DRY) {
@@ -454,14 +570,23 @@ async function 跑一份刪除(task) {
     return;
   }
 
-  if (!authSessionStatus().有登入) {
-    console.error(登入問題說明());
-    await call("fail-delete", { taskId: task.id, error: "FB 登入狀態失效，要本人重跑一次登入" });
+  // 🔴 刪文一定要用「當初發文的那個帳號」登入——活動紀錄／你的內容只看得到登入帳號自己發的
+  let authFile;
+  try {
+    authFile = 登入檔(identity);
+  } catch (e) {
+    await call("fail-delete", { taskId: task.id, error: `發文身分「${identity.name}」的登入代號有問題：${e.message}`.slice(0, 400) });
+    log(`   ❌ ${e.message} → 標記失敗`);
+    return;
+  }
+  if (!authSessionStatus(authFile).有登入) {
+    console.error(身分登入說明(identity, authFile));
+    await call("fail-delete", { taskId: task.id, error: 身分登入失敗原因(identity) });
     return;
   }
 
-  if (groups.length) return 跑社團你的內容路徑(task, groups);
-  return 跑活動紀錄路徑(task);
+  if (groups.length) return 跑社團你的內容路徑(task, groups, authFile);
+  return 跑活動紀錄路徑(task, authFile);
 }
 
 /** 從子行程輸出裡撈 RESULT_JSON:{...}。解不出來回 null。 */
@@ -479,7 +604,7 @@ function 讀結果行(out) {
 
 /* ── 主路徑：社團「你的內容」（delete-group-content.mjs），一個社團跑一次 ── */
 
-async function 跑社團你的內容路徑(task, groups) {
+async function 跑社團你的內容路徑(task, groups, authFile) {
   const 合計 = { deleted: 0, previewCount: 0, scanned: 0, pending: [], items: [], 失敗: [], 跑完幾個: 0 };
 
   for (const [i, g] of groups.entries()) {
@@ -494,12 +619,18 @@ async function 跑社團你的內容路徑(task, groups) {
     log(`   ▶ [${i + 1}/${groups.length}] ${g.name || g.url}${task.autoConfirm ? " --confirm" : "（先看不刪，只產生預覽）"}`);
 
     const run = ATTENDED
-      ? spawnSync(process.execPath, args, { cwd: import.meta.dirname, stdio: "inherit", timeout: SHORT_JOB_TIMEOUT_MS })
+      ? spawnSync(process.execPath, args, {
+          cwd: import.meta.dirname,
+          stdio: "inherit",
+          timeout: SHORT_JOB_TIMEOUT_MS,
+          env: 子行程環境(authFile),
+        })
       : spawnSync(process.execPath, args, {
           cwd: import.meta.dirname,
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
           timeout: SHORT_JOB_TIMEOUT_MS,
+          env: 子行程環境(authFile),
         });
 
     if (ATTENDED) {
@@ -571,7 +702,7 @@ async function 跑社團你的內容路徑(task, groups) {
 
 /* ── 舊路徑：活動紀錄（delete-groups.mjs）。只有「不知道發到哪個社團」時才走；帶照片的貼文這條看不到。 ── */
 
-async function 跑活動紀錄路徑(task) {
+async function 跑活動紀錄路徑(task, authFile) {
   const args = [
     path.join(import.meta.dirname, "delete-groups.mjs"),
     `--match=${task.matchText}`,
@@ -587,12 +718,18 @@ async function 跑活動紀錄路徑(task) {
   log(`   ▶ delete-groups.mjs --max=${task.maxItems}${task.autoConfirm ? " --confirm" : "（先看不刪，只產生預覽）"}`);
 
   const run = ATTENDED
-    ? spawnSync(process.execPath, args, { cwd: import.meta.dirname, stdio: "inherit", timeout: SHORT_JOB_TIMEOUT_MS })
+    ? spawnSync(process.execPath, args, {
+        cwd: import.meta.dirname,
+        stdio: "inherit",
+        timeout: SHORT_JOB_TIMEOUT_MS,
+        env: 子行程環境(authFile),
+      })
     : spawnSync(process.execPath, args, {
         cwd: import.meta.dirname,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
         timeout: SHORT_JOB_TIMEOUT_MS,
+        env: 子行程環境(authFile),
       });
 
   // --attended 走 inherit，拿不到字串可解析 —— 信任結束碼就好，實際刪了幾篇看 deleted-log。
@@ -638,6 +775,60 @@ async function 跑活動紀錄路徑(task) {
   log(`   🎉 完成（${task.autoConfirm ? `刪了 ${result.deleted || 0} 篇` : `預覽 ${result.previewCount || 0} 篇`}）`);
 }
 
+/* ── 發文身分：哪些身分現在登入有效、並回報給後台 ── */
+
+/**
+ * 登入檔有效的身分清單，給 Marketplace 認領用（直接讀資料庫那條路）。
+ * 元素是 identity_id；主帳號放 null。查不到身分（資料庫連不上）就只看主帳號——跟加這個功能之前一樣。
+ */
+async function 登入有效的身分() {
+  const ok = [];
+  if (authSessionStatus(authFileForIdentity(null)).有登入) ok.push(null);
+  try {
+    const rows = await listIdentities({ onlyActive: true });
+    for (const r of rows) {
+      if (r.is_default === 1 || r.kind !== "personal") continue;
+      try {
+        if (authSessionStatus(authFileForIdentity(r.auth_key)).有登入) ok.push(r.id);
+      } catch {
+        /* 登入代號不合法＝不算有效 */
+      }
+    }
+  } catch {
+    /* 資料庫查不到身分：只剩主帳號 */
+  }
+  return ok;
+}
+
+/**
+ * 每一輪先把各身分的登入檔有沒有效回報給後台（網站在 Vercel，讀不到桌機的檔案，只能靠這個）。
+ * 走後台 API（跟一般貼文同一條路），所以測試用假後台時不會碰到真的資料庫。失敗只印一行，不影響發文。
+ */
+async function 回報身分登入狀態() {
+  if (process.env.FB_SKIP_IDENTITY_REPORT === "1") return;
+  try {
+    const res = await call("identities");
+    for (const idn of res.identities || []) {
+      let ok = false;
+      let note;
+      try {
+        const s = authSessionStatus(authFileForIdentity(idn.authKey));
+        ok = s.有登入;
+        note = ok
+          ? `登入檔有效（${s.cookie數} 個 cookie）`
+          : !s.檔案存在
+            ? "桌機上還沒有這個身分的登入檔"
+            : "登入檔裡沒有帳號身分 cookie（c_user／xs），要重新登入";
+      } catch (e) {
+        note = `登入代號有問題：${e.message}`;
+      }
+      await call("identity-login", { identityId: idn.id, ok, note });
+    }
+  } catch (e) {
+    log(`⚠ 回報身分登入狀態失敗（不影響發文）：${String(e?.message || e).slice(0, 100)}`);
+  }
+}
+
 /* ── 主迴圈 ── */
 
 async function 撈一輪() {
@@ -662,13 +853,16 @@ async function 撈一輪() {
   //    ② 沒有有效的 FB 登入 → 認領了也發不出去，不要白白把任務改成 running / 累加 attempts
   //       （2026-09-07 修：原本是「先認領、再檢查登入、失敗就 failMarketplaceTask」，
   //        測試時 FB_AUTH_FILE 指向假檔就會把真的排程標成失敗。順序反了。）
+  //    （2026-10-07 發文身分：登入有沒有效改成「分身分」判斷——只認領登入檔有效的身分的任務，
+  //      主帳號沒登入不再連累其他身分，其他身分沒登入也不會被認領成 running。）
+  const 有效身分 = process.env.FB_SKIP_MARKETPLACE === "1" ? [] : await 登入有效的身分();
   if (process.env.FB_SKIP_MARKETPLACE === "1") {
     log("（FB_SKIP_MARKETPLACE=1，跳過 Marketplace 通路）");
-  } else if (!authSessionStatus().有登入) {
-    log("（FB 登入無效，跳過 Marketplace 通路 —— 不認領，免得把排程卡成 running）");
+  } else if (有效身分.length === 0) {
+    log("（沒有任何一個發文身分的 FB 登入有效，跳過 Marketplace 通路 —— 不認領，免得把排程卡成 running）");
   } else {
     try {
-      const mpTask = await claimNextMarketplaceTask(WORKER_ID);
+      const mpTask = await claimNextMarketplaceTask(WORKER_ID, new Date(), 有效身分);
       if (mpTask) {
         await 跑一份Marketplace(mpTask);
         return true;
@@ -686,7 +880,7 @@ async function 撈一輪() {
   try {
     const del = await call("claim-delete");
     if (del.task) {
-      await 跑一份刪除(del.task);
+      await 跑一份刪除(del.task, del.identity);
       return true;
     }
     if (del.note) log(del.note);
@@ -813,6 +1007,7 @@ async function main() {
 
   if (ONCE) {
     // 🔴 正式環境是 Windows 排程每 5 分鐘跑一次 --once（不是下面的無限迴圈），所以這兩件也要放在這裡
+    await 回報身分登入狀態();
     await 每日官網檢查();
     await 推進重新曝光();
     for (let i = 0; i < 3; i += 1) {
@@ -823,6 +1018,7 @@ async function main() {
   }
 
   for (;;) {
+    await 回報身分登入狀態();
     await 每日官網檢查();
     await 推進重新曝光();
     try {

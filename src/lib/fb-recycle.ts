@@ -52,8 +52,15 @@ export function inRecycleWindow(now = new Date()): boolean {
   return h >= WINDOW_START_HOUR && h < WINDOW_END_HOUR;
 }
 
-/** 這則文案目前還掛在哪些社團（發成功、還沒被刪掉），附社團自己的設定。 */
+/**
+ * 這則文案目前還掛在哪些社團（發成功、還沒被刪掉），附社團自己的設定。
+ *
+ * 2026-10-07 發文身分：**只看主帳號發的**（t.identity_id IS NULL）。自動重新曝光是「用主帳號的登入
+ * 刪舊文、再用主帳號重貼」，如果把別的帳號發的社團也算進來，就會拿主帳號去刪／重貼別的帳號的貼文
+ * （刪文只刪得到登入帳號自己的，會刪不到還白白重貼一次）。其他身分的自動重新曝光之後再做。
+ */
 export async function liveGroupsForDraft(draftId: string): Promise<LiveGroup[]> {
+  await ensureFbCoreTables(); // identity_id 欄位要先補好
   const rows = await db.$queryRawUnsafe<
     Array<{
       group_id: string;
@@ -71,6 +78,7 @@ export async function liveGroupsForDraft(draftId: string): Promise<LiveGroup[]> 
        JOIN fb_task t ON t.id = i.task_id
        LEFT JOIN fb_group g ON g.id = i.group_id
       WHERE t.draft_id = ? AND t.channel = 'post' AND i.channel = 'group' AND i.status = 'posted'
+        AND t.identity_id IS NULL
         AND i.deleted_at IS NULL AND i.group_id IS NOT NULL AND i.group_url IS NOT NULL AND i.group_url <> ''
       GROUP BY i.group_id`,
     draftId,
@@ -325,10 +333,12 @@ export async function setRecycleEnabled(draftId: string, on: boolean): Promise<{
 export async function recycleDueMap(draftIds: string[]): Promise<Map<string, Date>> {
   const out = new Map<string, Date>();
   if (!draftIds.length) return out;
+  await ensureFbCoreTables(); // identity_id 欄位要先補好
   const rows = await db.$queryRawUnsafe<Array<{ draft_id: string; last_at: Date | null }>>(
     `SELECT t.draft_id, MAX(i.done_at) AS last_at
        FROM fb_task_item i JOIN fb_task t ON t.id = i.task_id
       WHERE t.channel = 'post' AND i.channel = 'group' AND i.status = 'posted' AND i.deleted_at IS NULL
+        AND t.identity_id IS NULL
         AND t.draft_id IN (${draftIds.map(() => "?").join(",")})
       GROUP BY t.draft_id`,
     ...draftIds,

@@ -73,6 +73,12 @@ const 隔離環境 = {
   // 擬真模式的「開瀏覽器前先等 0～45 秒」在測試裡只是浪費時間（驗的是 runner 的決定，不是節奏）。
   // 其他擬真動作（滑鼠曲線、分段打字）維持開著，讓 post.mjs 在假頁面上真的走過那條路。
   FB_START_JITTER_MAX_SEC: "0",
+  // 2026-10-07 發文身分：每一輪開頭回報各身分登入狀態（走後台 API，這裡是假後台，不會寫到正式資料庫）。
+  // 預設關掉，免得多出一個 action 讓 ③「只有認領」那條斷言失準；⑧ 那段才明確打開來驗。
+  FB_SKIP_IDENTITY_REPORT: "1",
+  // 2026-10-07 發文身分：runner 認領後會拿資料庫核對「後台回的身分」（版本錯位保險）。假後台的任務 id 資料庫裡沒有，
+  // 而且測試不該連到真的資料庫，所以測試一律關掉（那段邏輯的判斷式在 test-identity.mjs 用純函式驗）。
+  FB_SKIP_IDENTITY_DB_CHECK: "1",
 };
 let pass = 0;
 const fails = [];
@@ -81,8 +87,8 @@ const ok = (name, cond, extra = "") => {
   else fails.push(`${name}${extra ? `　→ ${extra}` : ""}`);
 };
 
-/** 起一台假後台，把 runner 打過來的每個 action 都記下來。 */
-function 假後台(job, deleteJob = null) {
+/** 起一台假後台，把 runner 打過來的每個 action 都記下來。identities：問「有哪些身分」時回的清單（2026-10-07）。 */
+function 假後台(job, deleteJob = null, identities = []) {
   const 收到 = [];
   const server = createServer((req, res) => {
     if (req.method === "GET") {
@@ -101,9 +107,11 @@ function 假後台(job, deleteJob = null) {
         const 給 = 收到.filter((x) => x.action === "claim").length === 1 ? job : null;
         res.end(JSON.stringify({ ok: true, task: 給?.task ?? null, ...(給 || {}), note: 給 ? "" : "沒有到期的工作" }));
       } else if (p.action === "claim-delete") {
-        // 刪文工作也只給一次
+        // 刪文工作也只給一次（有 identity 欄位時一起帶回去，跟真的後台一樣）
         const 給 = 收到.filter((x) => x.action === "claim-delete").length === 1 ? deleteJob : null;
-        res.end(JSON.stringify({ ok: true, task: 給 }));
+        res.end(JSON.stringify({ ok: true, task: 給 ? 給.task ?? 給 : null, ...(給?.identity ? { identity: 給.identity } : {}) }));
+      } else if (p.action === "identities") {
+        res.end(JSON.stringify({ ok: true, identities }));
       } else {
         res.end(JSON.stringify({ ok: true }));
       }
@@ -133,7 +141,9 @@ function 跑runner(args, port, extraEnv = {}) {
     let stderr = "";
     child.stdout.on("data", (c) => (stdout += c));
     child.stderr.on("data", (c) => (stderr += c));
-    const kill = setTimeout(() => child.kill(), 45_000);
+    // 只是防掛住的保險，不是效能斷言。⑥ 真的開瀏覽器走擬真打字，安靜時約 28 秒；機器忙（開著 dev server 編譯、
+    // 剩不到 1GB 記憶體）時會超過 45 秒被砍，砍掉就只剩一筆 claim、其餘全沒有（2026-10-07 真的發生過兩次）。
+    const kill = setTimeout(() => child.kill(), 150_000);
     child.on("close", (status) => {
       clearTimeout(kill);
       resolve({ status, stdout, stderr });
@@ -148,8 +158,8 @@ const 樣本工作 = (autoPublish) => ({
   photos: [],
 });
 
-async function 用假後台跑(job, args, extraEnv, deleteJob = null) {
-  const { server, 收到 } = 假後台(job, deleteJob);
+async function 用假後台跑(job, args, extraEnv, deleteJob = null, identities = []) {
+  const { server, 收到 } = 假後台(job, deleteJob, identities);
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const port = server.address().port;
   const run = await 跑runner(args, port, extraEnv);
@@ -224,12 +234,14 @@ console.log("⑤ --ping 出發前檢查…");
 /* ── ⑥ 真的走完一輪（對假 FB，不是真 FB） ── */
 console.log("⑥ 真的跑一份工作（打假 FB 頁）…");
 {
-  const { 收到, out } = await 用假後台跑(樣本工作(true), ["--once", "--headless"]);
+  const { run, 收到, out } = await 用假後台跑(樣本工作(true), ["--once", "--headless"]);
   const actions = 收到.map((x) => x.action);
-  ok("⑥ 有回報發送結果", actions.includes("report"), actions.join(","));
+  // 失敗時多帶離開碼與輸出尾段：離開碼是 null ＝ 被測試的逾時計時器砍掉（機器太忙），不是 runner 自己壞了
+  const 現場 = `${actions.join(",")}｜離開碼 ${run.status}｜輸出尾段：${out.slice(-500).replace(/\s+/g, " ")}`;
+  ok("⑥ 有回報發送結果", actions.includes("report"), 現場);
   const rep = 收到.find((x) => x.action === "report");
   ok("⑥ 回報成 posted", rep?.result === "posted", JSON.stringify(rep));
-  ok("⑥ 全部收完會 finish", actions.includes("finish"), actions.join(","));
+  ok("⑥ 全部收完會 finish", actions.includes("finish"), 現場);
   ok("⑥ 沒有標記失敗", !actions.includes("fail"), actions.join(","));
   ok("⑥ 確實有跑 post.mjs", out.includes("post.mjs"), out.slice(0, 200));
   // 🔴 最重要的一條：整輪都不該碰到真的 facebook.com
@@ -283,6 +295,131 @@ console.log("⑦ 刪文工作走社團「你的內容」路徑（假頁面）…
     ok("⑦b 備註寫刪了幾篇", (fin?.note || "").includes("刪了 2 篇"), fin?.note);
     ok("⑦b 子工具真的走了兩次刪除", (out.match(/✅ 刪掉了/g) || []).length === 2, out.slice(-600));
     ok("⑦b 沒有開真的 FB", !out.includes("開啟你的內容：https://www.facebook.com"));
+  }
+}
+
+/* ── ⑧ 發文身分（2026-10-07）：🔴 絕不拿錯帳號的登入檔去發 ──
+ *
+ * 每個身分有自己的登入檔（fb-state-<代號>.json，跟 FB_AUTH_FILE 同資料夾）。最不能出的事：
+ *   ・第二個身分的登入檔不見了，runner 偷懶退回主帳號的檔去發 → 用 A 帳號發了 B 帳號的貼文
+ *   ・代號被拼進檔名時被路徑穿越
+ * 驗法：用「兩邊一邊有檔一邊沒檔」的對照，成功＝真的用了該身分自己的檔，失敗＝沒有偷用別人的。
+ */
+console.log("⑧ 發文身分：各用各的登入檔、絕不退回主帳號…");
+{
+  const 身分 = { id: "idn-test-1", kind: "personal", name: "測試第二帳號", authKey: "acct-t3st" };
+  const 身分檔 = path.join(SANDBOX, "fb-state-acct-t3st.json");
+  const 假登入 = (uid) =>
+    JSON.stringify({
+      cookies: [
+        { name: "c_user", value: uid, domain: ".facebook.com", path: "/" },
+        { name: "xs", value: "fake-session-for-test", domain: ".facebook.com", path: "/" },
+      ],
+      origins: [],
+    });
+  const 工作 = (identity) => ({ ...樣本工作(true), ...(identity ? { identity } : {}) });
+  const 主不存在 = { FB_AUTH_FILE: path.join(SANDBOX, "no-main-auth.json") };
+
+  // 8a：第二個身分沒有登入檔，但主帳號的檔好好的 → 一定要失敗，不能退回主帳號去發
+  rmSync(身分檔, { force: true });
+  {
+    const { 收到, out } = await 用假後台跑(工作(身分), ["--once", "--headless"]);
+    const actions = 收到.map((x) => x.action);
+    const fail = 收到.find((x) => x.action === "fail");
+    ok("⑧a 標記失敗", !!fail, actions.join(","));
+    ok("⑧a 失敗原因點名是哪個身分", (fail?.error || "").includes("測試第二帳號"), fail?.error);
+    ok("⑧a 失敗原因給出登入代號", (fail?.error || "").includes("acct-t3st"), fail?.error);
+    ok("⑧a 🔴 沒有退回主帳號去發（沒回報任何發送）", !actions.includes("report") && !actions.includes("finish"), actions.join(","));
+    ok("⑧a 🔴 沒有去跑 post.mjs", !out.includes("▶ post.mjs"), out.slice(0, 300));
+    ok("⑧a 指路到 FB登入-其他帳號.bat", out.includes("FB登入-其他帳號.bat"), out.slice(0, 300));
+  }
+
+  // 8b：第二個身分有登入檔、主帳號的檔不存在 → 成功才代表真的用了第二個身分自己的檔
+  writeFileSync(身分檔, 假登入("9999"), "utf8");
+  {
+    const { 收到, out } = await 用假後台跑(工作(身分), ["--once", "--headless"], 主不存在);
+    const actions = 收到.map((x) => x.action);
+    const rep = 收到.find((x) => x.action === "report");
+    ok("⑧b 回報成 posted（用了該身分自己的登入檔才發得出去）", rep?.result === "posted", `${actions.join(",")} ${JSON.stringify(rep)}`);
+    ok("⑧b 收尾", actions.includes("finish") && !actions.includes("fail"), actions.join(","));
+    ok("⑧b 印出是哪個身分", out.includes("身分：測試第二帳號"), out.slice(0, 300));
+    ok("⑧b 沒有連到真的 FB", !out.includes("https://www.facebook.com"), out.slice(0, 300));
+  }
+
+  // 8c：同樣是主帳號的檔不存在，但這份工作**沒有身分**（＝主帳號）→ 要失敗（證明 8b 不是因為「什麼檔都能過」）
+  {
+    const { 收到, out } = await 用假後台跑(工作(null), ["--once", "--headless"], 主不存在);
+    const actions = 收到.map((x) => x.action);
+    ok("⑧c 沒有身分＝主帳號，主帳號沒登入檔 → 失敗", actions.includes("fail") && !actions.includes("report"), actions.join(","));
+    ok("⑧c 失敗講的是主帳號那套（不是其他身分的）", !out.includes("FB登入-其他帳號.bat"), out.slice(0, 300));
+  }
+
+  // 8d：登入代號不合法（路徑穿越）→ 失敗，不去拼檔名
+  {
+    const { 收到, out } = await 用假後台跑(工作({ ...身分, authKey: "../evil" }), ["--once", "--headless"]);
+    const actions = 收到.map((x) => x.action);
+    const fail = 收到.find((x) => x.action === "fail");
+    ok("⑧d 不合法代號 → 失敗", !!fail && !actions.includes("report"), actions.join(","));
+    ok("⑧d 失敗原因講「登入代號」", (fail?.error || "").includes("登入代號"), fail?.error);
+    ok("⑧d 沒有去跑 post.mjs", !out.includes("▶ post.mjs"), out.slice(0, 300));
+  }
+
+  // 8e：每一輪開頭回報各身分的登入狀態（打開 FB_SKIP_IDENTITY_REPORT 才會做）
+  {
+    const 清單 = [
+      { id: "main", kind: "personal", name: "主帳號", authKey: null },
+      { id: "idn-test-1", kind: "personal", name: "測試第二帳號", authKey: "acct-t3st" },
+      { id: "idn-test-2", kind: "personal", name: "沒登入的", authKey: "acct-nolg" },
+    ];
+    const { 收到 } = await 用假後台跑(null, ["--once"], { FB_SKIP_IDENTITY_REPORT: "0" }, null, 清單);
+    const 回報 = 收到.filter((x) => x.action === "identity-login");
+    const 找 = (id) => 回報.find((x) => x.identityId === id);
+    ok("⑧e 每個身分都回報一次", 回報.length === 3, JSON.stringify(回報.map((x) => x.identityId)));
+    ok("⑧e 主帳號有登入 → ok:true", 找("main")?.ok === true, JSON.stringify(找("main")));
+    ok("⑧e 第二帳號有登入檔 → ok:true", 找("idn-test-1")?.ok === true, JSON.stringify(找("idn-test-1")));
+    ok("⑧e 沒登入檔的 → ok:false，備註講桌機上沒有", 找("idn-test-2")?.ok === false && (找("idn-test-2")?.note || "").includes("還沒有"), JSON.stringify(找("idn-test-2")));
+    ok("⑧e 回報裡不含任何 cookie 值（只有數量與狀態）", !JSON.stringify(回報).includes("fake-session-for-test") && !JSON.stringify(回報).includes("9999"));
+  }
+
+  // 8f：刪文工作也要用「發文那個身分」的登入檔——刪文只刪得到登入帳號自己發的
+  {
+    const 刪文隔離 = {
+      FB_FAST: "1",
+      FB_GROUP_CONTENT_URL: pathToFileURL(path.join(HERE, "test-fake-my-content.html")).href,
+      FB_POST_URL_TEMPLATE: `${pathToFileURL(path.join(HERE, "test-fake-post.html")).href}?id={postId}`,
+      FB_DELETED_LOG_DIR: path.join(SANDBOX, "deleted-log"),
+    };
+    const 刪文 = {
+      task: {
+        id: "del-test-id-0001",
+        title: "身分測試",
+        matchText: "這間全新整理的漂亮透天，竟然只要 698 萬！",
+        maxItems: 8,
+        olderThanDays: null,
+        groupName: null,
+        groups: [{ id: "g1", name: "台中海線不動產專屬社團", url: "https://www.facebook.com/groups/633083157498896" }],
+        autoConfirm: true,
+        attempts: 1,
+      },
+      identity: 身分,
+    };
+    // 沒登入檔 → 不能退回主帳號
+    rmSync(身分檔, { force: true });
+    {
+      const { 收到, out } = await 用假後台跑(null, ["--once", "--headless"], 刪文隔離, 刪文);
+      const actions = 收到.map((x) => x.action);
+      const fail = 收到.find((x) => x.action === "fail-delete");
+      ok("⑧f 刪文：沒有該身分的登入檔 → 標記失敗", !!fail && !actions.includes("finish-delete"), actions.join(","));
+      ok("⑧f 刪文：失敗原因點名身分", (fail?.error || "").includes("測試第二帳號"), fail?.error);
+      ok("⑧f 🔴 刪文：沒有退回主帳號去刪", !out.includes("delete-group-content"), out.slice(0, 300));
+    }
+    // 有登入檔、主帳號的檔不存在 → 成功才代表用了該身分的檔
+    writeFileSync(身分檔, 假登入("9999"), "utf8");
+    {
+      const { 收到 } = await 用假後台跑(null, ["--once", "--headless"], { ...刪文隔離, ...主不存在 }, 刪文);
+      const fin = 收到.find((x) => x.action === "finish-delete");
+      ok("⑧f 刪文：用該身分自己的登入檔刪成功", fin?.deletedCount === 2, JSON.stringify(fin));
+    }
   }
 }
 

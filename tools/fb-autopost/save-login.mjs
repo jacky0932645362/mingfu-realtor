@@ -12,8 +12,26 @@
  *    登入狀態會過期（FB 大約幾個月），過期就再跑一次這支。
  */
 import { chromium } from "playwright";
-import { AUTH_FILE, FB_HOME, ensureDir, waitForEnter } from "./_shared.mjs";
+import { AUTH_FILE, FB_HOME, ensureDir, waitForEnter, authFileForIdentity, authAccountId, otherAuthFiles } from "./_shared.mjs";
 import path from "node:path";
+
+/**
+ * 2026-10-07 發文身分：`--identity=<登入代號>`（後台「發文身分」頁每個身分卡片上有）存成這個身分自己的登入檔
+ * （auth/fb-state-<代號>.json），**不會碰到主帳號的 fb-state.json**。沒加＝存主帳號，跟以前一模一樣。
+ */
+const identityArg = process.argv.slice(2).find((a) => a.startsWith("--identity="))?.slice("--identity=".length).trim();
+let TARGET_FILE = AUTH_FILE;
+if (identityArg) {
+  try {
+    TARGET_FILE = authFileForIdentity(identityArg);
+  } catch (e) {
+    console.error(`\n❌ ${e.message}`);
+    console.error("   登入代號長這樣：acct-k7m2（在後台「發文身分」頁、那個身分的卡片上）。\n");
+    process.exit(1);
+  }
+  console.log(`\n要登入的是發文身分「${identityArg}」，會存到：${TARGET_FILE}`);
+  console.log("（主帳號的登入檔不會被動到）");
+}
 
 const browser = await chromium.launch({
   // 用系統已經裝好的 Chrome，不另外下載 150MB 的 chromium（C 槽吃緊）
@@ -84,11 +102,35 @@ if (!登入成功) {
   process.exit(1);
 }
 
-ensureDir(path.dirname(AUTH_FILE));
-await context.storageState({ path: AUTH_FILE });
+/**
+ * 🔴 同一個 FB 帳號不能存成兩個身分（例：想登入第二個帳號，結果瀏覽器裡還是主帳號）。
+ *    比對 c_user（帳號的數字編號，不是密碼）；撞到就不存，免得兩個身分其實是同一個帳號，
+ *    各自有一份社團清單、各自排程，最後同一個帳號被當兩個人在發。
+ */
+{
+  const { cookies } = await context.storageState();
+  const newId = cookies.find((c) => c.name === "c_user")?.value;
+  if (newId) {
+    const dup = otherAuthFiles(TARGET_FILE).find((f) => authAccountId(f) === String(newId));
+    if (dup) {
+      console.error(`\n❌ 這次登入的帳號，跟另一個登入檔（${path.basename(dup)}）是同一個 FB 帳號，這次不存檔。`);
+      console.error("   要登入的是「另一個」帳號——到瀏覽器先登出、換成那個帳號登入，再按 Enter。");
+      console.error("   （如果其實就是同一個帳號，不用新增身分，直接用原本那個。）");
+      await browser.close();
+      process.exit(1);
+    }
+  }
+}
 
-console.log(`\n✅ 確認已登入，狀態存到：${AUTH_FILE}`);
-console.log("   下一步：npm run inspect（把 FB 發文框的結構抄下來）");
+ensureDir(path.dirname(TARGET_FILE));
+await context.storageState({ path: TARGET_FILE });
+
+console.log(`\n✅ 確認已登入，狀態存到：${TARGET_FILE}`);
+console.log(
+  identityArg
+    ? "   下一步：雙擊 FB抓社團-其他帳號.bat（同一個登入代號），把這個帳號的社團抓進後台。"
+    : "   下一步：npm run inspect（把 FB 發文框的結構抄下來）",
+);
 console.log("\n⚠️  這個檔等同 FB 帳號鑰匙，不要外流、不要 commit。");
 
 await browser.close();

@@ -9,6 +9,7 @@ import {
   fmtDateTime,
   firstLineForMatch,
 } from "@/lib/fb-factory";
+import { listIdentities } from "@/lib/fb-identity";
 import { CIS, CHIP } from "@/app/admin/fb/_ui/theme";
 import { Icon } from "@/app/admin/_ui/icons";
 import { DeleteForm } from "./DeleteForm";
@@ -36,11 +37,12 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function DeletePage() {
-  const [allDrafts, tasks, deletableGroups, deletableDrafts] = await Promise.all([
+  const [allDrafts, tasks, deletableGroups, deletableDrafts, identityRows] = await Promise.all([
     listFbDrafts({ channel: "post", queue: "done" }),
     listDeleteTasks({ limit: 50 }),
     listDeletableGroups(),
     listDeletableDrafts(),
+    listIdentities(),
   ]);
   // 只有真的貼出去的才有得刪 —— queue:"done" 連「排程中但還沒發」的也算進來，這裡再篩一次。
   const posted = allDrafts.filter((d) => d.post_status === "posted");
@@ -97,6 +99,20 @@ export default async function DeletePage() {
           但刪錯了沒辦法復原 —— 下手前再看一眼比對的內容準不準。
         </div>
       </div>
+
+      {identityRows.length > 1 ? (
+        <div
+          className={styles.notice}
+          style={{ background: "rgba(245,158,11,0.09)", border: "1px solid rgba(245,158,11,0.26)", color: CIS.textSub }}
+        >
+          <Icon name="user" size={16} color="#b45309" className={styles.noticeIcon} />
+          <div>
+            <strong style={{ color: "#b45309" }}>自動刪文目前只處理「主帳號」發的貼文。</strong>
+            用其他發文身分發的文不會出現在下面的清單裡——刪文一定要用當初發文的那個帳號登入才刪得到，
+            怕用錯帳號，其他身分的自動刪文還沒開放（要刪請先到 FB 自己刪）。
+          </div>
+        </div>
+      ) : null}
 
       {!runnerReady ? (
         <div

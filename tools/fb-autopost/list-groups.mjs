@@ -13,13 +13,14 @@
  *    抓回來的社團在後台預設「未啟用」—— 要發哪些由本人在後台勾，程式不替他決定。
  */
 import { chromium } from "playwright";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   AUTH_FILE,
   SHOTS_DIR,
   PROJECT_ROOT,
   authSessionStatus,
+  authFileForIdentity,
   ensureDir,
   humanDelay,
   loadEnv,
@@ -31,15 +32,40 @@ const argv = process.argv.slice(2);
 const FAST = argv.includes("--fast");
 const NO_DB = argv.includes("--no-db");
 
-if (!authSessionStatus().有登入) {
-  console.error(`\n❌ 現在跑不了。\n   ${登入問題說明()}\n`);
+/**
+ * 2026-10-07 發文身分：`--identity=<登入代號>` 用那個身分的登入檔抓「那個帳號加入的社團」，
+ * 寫進那個身分自己的清單（config/groups-<代號>.json ＋ 資料庫 fb_group.identity_id）。
+ * 沒加＝主帳號，跟以前一模一樣。
+ */
+const IDENTITY_KEY = argv.find((a) => a.startsWith("--identity="))?.slice("--identity=".length).trim() || null;
+let AUTH_TARGET = AUTH_FILE;
+if (IDENTITY_KEY) {
+  try {
+    AUTH_TARGET = authFileForIdentity(IDENTITY_KEY);
+  } catch (e) {
+    console.error(`\n❌ ${e.message}\n   登入代號長這樣：acct-k7m2（在後台「發文身分」頁、那個身分的卡片上）。\n`);
+    process.exit(1);
+  }
+}
+
+if (!authSessionStatus(AUTH_TARGET).有登入) {
+  console.error(
+    IDENTITY_KEY
+      ? `\n❌ 現在跑不了。發文身分「${IDENTITY_KEY}」還沒登入（或登入過期）。\n   先雙擊 FB登入-其他帳號.bat、輸入同一個登入代號登入那個帳號，再來抓社團。\n`
+      : `\n❌ 現在跑不了。\n   ${登入問題說明()}\n`,
+  );
   process.exit(1);
 }
 
-const GROUPS_FILE = path.join(import.meta.dirname, "config", "groups.json");
+const GROUPS_FILE = path.join(import.meta.dirname, "config", IDENTITY_KEY ? `groups-${IDENTITY_KEY}.json` : "groups.json");
+if (IDENTITY_KEY && !existsSync(GROUPS_FILE)) {
+  ensureDir(path.dirname(GROUPS_FILE));
+  writeFileSync(GROUPS_FILE, JSON.stringify({ 社團: [] }, null, 2), "utf8");
+}
+if (IDENTITY_KEY) console.log(`\n抓的是發文身分「${IDENTITY_KEY}」的社團清單 → ${path.basename(GROUPS_FILE)}（主帳號的清單不會被動到）`);
 
 const browser = await chromium.launch({ channel: "chrome", headless: false, args: ["--start-maximized"] });
-const context = await browser.newContext({ storageState: AUTH_FILE, viewport: null, locale: "zh-TW" });
+const context = await browser.newContext({ storageState: AUTH_TARGET, viewport: null, locale: "zh-TW" });
 const page = await context.newPage();
 ensureDir(SHOTS_DIR);
 
@@ -192,7 +218,26 @@ try {
         }
       }
 
-      const 現有 = await db.$queryRawUnsafe("SELECT id, url FROM fb_group");
+      // 2026-10-07 發文身分：fb_group 多一欄 identity_id（NULL＝主帳號）。這支自己連資料庫，所以欄位自己補。
+      try {
+        await db.$executeRawUnsafe("ALTER TABLE fb_group ADD COLUMN IF NOT EXISTS identity_id VARCHAR(64) NULL");
+      } catch {
+        /* 已存在 */
+      }
+      // 登入代號 → 身分的 id。查不到就中止同步（不要把另一個帳號的社團寫成主帳號的）
+      let identityId = null;
+      if (IDENTITY_KEY) {
+        const found = await db.$queryRawUnsafe("SELECT id FROM fb_identity WHERE auth_key = ? LIMIT 1", IDENTITY_KEY);
+        if (!found.length) {
+          throw new Error(`資料庫裡找不到登入代號 ${IDENTITY_KEY} 的發文身分——先到後台「發文身分」頁新增，再來抓社團（groups-${IDENTITY_KEY}.json 已經寫好了）`);
+        }
+        identityId = found[0].id;
+      }
+
+      // 判重只在「同一個身分的清單」裡比：同一個社團兩個帳號都有加入，會是兩列（各自有自己的啟用／冷卻／封存設定）
+      const 現有 = (await db.$queryRawUnsafe("SELECT id, url, identity_id FROM fb_group")).filter(
+        (r) => (r.identity_id || null) === identityId,
+      );
       const key = (u) => {
         const m = String(u).match(/groups\/([^/?#]+)/);
         return m ? m[1].toLowerCase() : String(u).toLowerCase();
@@ -240,8 +285,8 @@ try {
         } else {
           const id = globalThis.crypto.randomUUID().replace(/-/g, "");
           await db.$executeRawUnsafe(
-            `INSERT INTO fb_group (id, name, url, accepts, cooldown_days, is_active, member_count, privacy, needs_approval, has_discussion, has_marketplace, scanned_at, created_at)
-             VALUES (?, ?, ?, ?, 7, 0, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+            `INSERT INTO fb_group (id, name, url, accepts, cooldown_days, is_active, member_count, privacy, needs_approval, has_discussion, has_marketplace, scanned_at, identity_id, created_at)
+             VALUES (?, ?, ?, ?, 7, 0, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
             id,
             g.名稱.slice(0, 200),
             g.網址.slice(0, 500),
@@ -252,6 +297,7 @@ try {
             g.有討論 == null ? null : g.有討論 ? 1 : 0,
             g.有商品買賣 == null ? null : g.有商品買賣 ? 1 : 0,
             scannedAt,
+            identityId,
           );
           byKey.set(k, id);
           added++;

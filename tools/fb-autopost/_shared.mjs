@@ -215,6 +215,63 @@ export function authSessionStatus(file = AUTH_FILE) {
   }
 }
 
+/**
+ * 發文身分（2026-10-07）：登入代號 → 這個身分的登入檔路徑。
+ *
+ * 主帳號（沒有代號）＝原本的 AUTH_FILE，**一個字都沒變**——沒新增其他身分時行為跟以前一模一樣。
+ * 其他身分放在跟 AUTH_FILE 同一個資料夾：fb-state-<代號>.json（測試把 FB_AUTH_FILE 指到沙盒時，
+ * 其他身分的登入檔也自動跟著進沙盒，不會碰到真的 auth/）。
+ *
+ * 🔴 代號會被拼進檔名，一律先驗再拼；不合法直接丟錯，**絕不退回主帳號的檔**
+ *    （退回去＝拿錯帳號的鑰匙去發文，是多帳號功能最不能發生的事）。
+ * 規則要跟 src/lib/fb-identity-core.ts 的 isValidAuthKey／authFileNameFor 一致（test-identity.mjs 會對照）。
+ */
+export function authFileForIdentity(authKey) {
+  if (authKey == null || authKey === "") return AUTH_FILE;
+  if (!/^[a-z0-9][a-z0-9-]{0,23}$/.test(String(authKey))) {
+    throw new Error(`登入代號不合法：「${authKey}」`);
+  }
+  return path.join(path.dirname(AUTH_FILE), `fb-state-${authKey}.json`);
+}
+
+/**
+ * 🔴 版本錯位保險（2026-10-07）：後台 API 回的 identity，要跟資料庫裡那份工作實際指定的身分一致。
+ * 後台還沒更新（舊版）時 claim 不會回 identity，runner 會把「沒有身分」當成主帳號——但資料庫裡這份工作
+ * 可能是別的身分排的，拿主帳號去發＝用錯帳號。對不上就整份標失敗，不發。
+ *   dbIdentityId：資料庫 fb_task.identity_id（null／空／"main"＝主帳號）
+ *   jobIdentity ：後台回的 identity 物件（可能沒有）
+ */
+export function identityMatchesJob(dbIdentityId, jobIdentity) {
+  const dbSide = dbIdentityId == null || dbIdentityId === "" || dbIdentityId === "main" ? null : String(dbIdentityId);
+  const jobSide = !jobIdentity || !jobIdentity.id || jobIdentity.id === "main" ? null : String(jobIdentity.id);
+  return dbSide === jobSide;
+}
+
+/**
+ * 這個登入檔是哪個 FB 帳號（cookie `c_user` 的值＝帳號的數字編號，不是密碼；`xs` 那種 session 值一律不碰）。
+ * 讀不到回 null。只給「新增身分時別把同一個帳號登入兩次」的比對用，不印出來。
+ */
+export function authAccountId(file) {
+  try {
+    if (!existsSync(file)) return null;
+    const state = JSON.parse(readFileSync(file, "utf8"));
+    const c = (state.cookies || []).find((x) => x.name === "c_user");
+    return c?.value ? String(c.value) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** auth 資料夾裡所有登入檔（主帳號 fb-state.json ＋各身分 fb-state-<代號>.json），排除指定那一個。 */
+export function otherAuthFiles(exceptFile) {
+  const dir = path.dirname(AUTH_FILE);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /^fb-state(-[a-z0-9-]+)?\.json$/.test(f))
+    .map((f) => path.join(dir, f))
+    .filter((f) => path.resolve(f) !== path.resolve(exceptFile));
+}
+
 /** 登入過期／沒登入時，統一講同一套人話，不要每支腳本各講各的。 */
 export function 登入問題說明(file = AUTH_FILE) {
   const s = authSessionStatus(file);

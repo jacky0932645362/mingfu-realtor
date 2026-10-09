@@ -18,6 +18,8 @@ import {
   type FbChannel,
 } from "@/lib/fb-factory";
 import { clashNoteFor, CHANNEL_GAP_MINUTES, MIN_GAP_MINUTES, type ScheduledLite } from "@/lib/fb-rhythm";
+import { listIdentities } from "@/lib/fb-identity";
+import { identityIdForDisplay, loginStateOf, loginStateLabel } from "@/lib/fb-identity-core";
 import { CIS, CHIP } from "@/app/admin/fb/_ui/theme";
 import { Icon, type IconName } from "@/app/admin/_ui/icons";
 import { ScheduleForm } from "./ScheduleForm";
@@ -59,15 +61,34 @@ export default async function SchedulePage({
   const sp = await searchParams;
   const channel: FbChannel = isChannel(sp.channel) ? sp.channel : "post";
 
-  const [drafts, groups, tasks, postPending, mpPending, lastPosted, social] = await Promise.all([
+  const [drafts, groups, tasks, postPending, mpPending, lastPosted, social, identityRows] = await Promise.all([
     listFbDrafts({ channel, queue: "todo" }),
-    listFbGroups({ channel, onlyActive: true }),
+    // 2026-10-07 發文身分：各身分的社團一次全載，表單挑了身分再在前端篩
+    listFbGroups({ channel, onlyActive: true, identityId: "all" }),
     listFbTasks({ channel, limit: 50 }),
     listFbTasks({ channel: "post", status: "pending" }),
     listFbTasks({ channel: "marketplace", status: "pending" }),
     lastPostedByGroup(),
     allSocialAccountStatus(),
+    listIdentities(),
   ]);
+
+  const identityNameById = new Map(identityRows.map((r) => [identityIdForDisplay(r.id), r.name]));
+  // 只有一個身分（沒新增過其他的）時，任務列不顯示身分名，畫面跟以前一模一樣
+  const showIdentityName = identityRows.length > 1;
+  // 排程選單：只列啟用中的個人帳號（粉專第二段才開放）
+  const identityOptions = identityRows
+    .filter((r) => r.is_active === 1 && r.kind === "personal")
+    .map((r) => {
+      const state = loginStateOf(r);
+      return {
+        id: identityIdForDisplay(r.id),
+        name: r.name,
+        isDefault: r.is_default === 1,
+        loginState: state,
+        loginLabel: loginStateLabel(state),
+      };
+    });
 
   const counts: Record<FbChannel, number> = { post: postPending.length, marketplace: mpPending.length };
 
@@ -84,6 +105,7 @@ export default async function SchedulePage({
       return {
         id: g.id,
         name: g.name,
+        identityId: identityIdForDisplay(g.identity_id),
         cooling,
         note:
           `${members !== "—" ? `${members} 人` : ""}` +
@@ -121,6 +143,7 @@ export default async function SchedulePage({
       const startAt = new Date(new Date(t.run_at).getTime() + jitterSec * 1000);
       const hm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
       return {
+        identityName: showIdentityName ? identityNameById.get(identityIdForDisplay(t.identity_id)) || "（已刪除的身分）" : null,
         jitterMin: Math.round(jitterSec / 60),
         startAbout: hm(startAt),
         clash:
@@ -230,6 +253,7 @@ export default async function SchedulePage({
         key={channel}
         drafts={drafts.map((d) => ({ id: d.id, title: d.title }))}
         groups={groupOptions}
+        identities={identityOptions}
         channel={channel}
         preselectDraft={sp.draft || ""}
         marketplaceOnly={channel === "marketplace"}

@@ -15,7 +15,7 @@
  */
 
 import type { PropertyRow } from "@/lib/property";
-import { propertyTypeLabel } from "@/lib/property";
+import { propertyTypeLabel, parseLayout } from "@/lib/property";
 import { directImageUrl, parseImageList, parseVideoList } from "@/lib/media-url";
 
 /** 591 標題的建議上限。實際限制以 591 後台為準，這裡只當作「太長會被截」的預警線。 */
@@ -72,28 +72,10 @@ function pingText(value: string | null): string {
   return `${Number.isInteger(n) ? n : Number(n.toFixed(2))} 坪`;
 }
 
-/**
- * 「3房2廳2衛」→ { rooms: 3, halls: 2, baths: 2 }
- *
- * 591 的格局是房／廳／衛三個獨立下拉，不是一格文字，所以要拆開才好對照著選。
- * 拆不出來（例如寫成「兩房一廳」或「開放式」）就回 null，讓畫面退回顯示原文，
- * 不要自作聰明猜數字。
- */
-export function parseLayout(
-  raw: string | null,
-): { rooms: number; halls: number; baths: number } | null {
-  const text = clean(raw);
-  if (!text) return null;
-  const rooms = text.match(/(\d+)\s*房/);
-  const halls = text.match(/(\d+)\s*廳/);
-  const baths = text.match(/(\d+)\s*[衛浴]/);
-  if (!rooms) return null;
-  return {
-    rooms: Number(rooms[1]),
-    halls: halls ? Number(halls[1]) : 0,
-    baths: baths ? Number(baths[1]) : 0,
-  };
-}
+// parseLayout 搬去 @/lib/property 了（2026-09-22）——物件表單的格局下拉要反過來
+// 組字串，跟這裡拆字串是同一條規則，兩邊共用一份（上面已經 import 進來用）。
+// 這裡繼續 re-export 同一個名字，test-export-591.mjs 是照這個檔案的路徑匯入的，不要拿掉。
+export { parseLayout };
 
 /**
  * 「12樓/15樓」「12F/15F」「12樓，共15樓」→ { floor: 12, total: 15 }

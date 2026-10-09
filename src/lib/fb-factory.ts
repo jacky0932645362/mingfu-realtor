@@ -33,6 +33,8 @@ import { db } from "@/lib/db";
 import { rollJitterSec } from "@/lib/fb-humanize";
 import { deriveIgCaption, deriveThreadsText } from "@/lib/fb-social-copy";
 import { rhythmHold, type RhythmSnapshot, type RhythmChannel } from "@/lib/fb-rhythm";
+import { ensureFbIdentityTable } from "@/lib/fb-identity";
+import { normalizeIdentityId, identityIdForDisplay } from "@/lib/fb-identity-core";
 import { randomUUID } from "node:crypto";
 
 /* ────────────────── 通路 ────────────────── */
@@ -147,6 +149,8 @@ export type FbGroupRow = {
   id: string;
   name: string;
   url: string;
+  /** 2026-10-07 發文身分：這個社團是哪個身分的清單。null＝主帳號（舊資料都是 null）。 */
+  identity_id?: string | null;
   note: string | null;
   cooldown_days: number;
   is_active: number;
@@ -177,6 +181,8 @@ export type FbTaskRow = {
   run_at: Date;
   status: string;
   channel: string;
+  /** 2026-10-07 發文身分：用哪個身分發。null＝主帳號（舊資料都是 null）。 */
+  identity_id?: string | null;
   created_at: Date;
   updated_at: Date | null;
 };
@@ -226,6 +232,8 @@ export type FbDeleteTaskRow = {
   status: string;
   /** 2026-09-19：限定只清這一個社團的（跟 match_text 是 AND 關係，不是取代）。null＝不限社團（原本的「按工作流清空」）。 */
   group_id: string | null;
+  /** 2026-10-07 發文身分：用哪個帳號的登入去刪（刪文只刪「登入的那個帳號自己發的」）。null＝主帳號。 */
+  identity_id?: string | null;
   created_at: Date;
   updated_at: Date | null;
 };
@@ -356,6 +364,26 @@ export async function ensureFbCoreTables(): Promise<void> {
   await ensureFbDraftColumns();
   await ensureFbRunnerTable();
   await ensureFbDeleteTables();
+  await ensureFbIdentityTable();
+  await ensureFbIdentityColumns();
+}
+
+/**
+ * 發文身分（2026-10-07）：fb_task／fb_group 各加一欄 identity_id。
+ * nullable、不設預設值——舊資料與「另一台」的程式碼寫進來的都是 NULL，
+ * NULL ＝ 主帳號（見 fb-identity-core.ts），所以什麼都不用回填、不會有任何舊資料變樣。
+ */
+let identityColsEnsured = false;
+async function ensureFbIdentityColumns(): Promise<void> {
+  if (identityColsEnsured) return;
+  for (const table of ["fb_task", "fb_group"]) {
+    try {
+      await db.$executeRawUnsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS identity_id VARCHAR(64) NULL`);
+    } catch {
+      // 舊版 MySQL 不吃 IF NOT EXISTS —— 欄位已存在時這裡會丟，吞掉即可
+    }
+  }
+  identityColsEnsured = true;
 }
 
 /** fb_draft 後加的欄位（2026-09-21）：IG／Threads 版本。nullable、只加不改。 */
@@ -438,6 +466,13 @@ export async function ensureFbDeleteTables(): Promise<void> {
     await db.$executeRawUnsafe(`ALTER TABLE fb_delete_task ADD COLUMN IF NOT EXISTS group_id VARCHAR(64) NULL`);
   } catch {
     // 舊版 MySQL 不吃 IF NOT EXISTS —— 欄位已存在時這裡會丟，吞掉即可
+  }
+  // 2026-10-07 發文身分：刪文要用「當初發文的那個帳號」的登入去刪（活動紀錄只看得到登入帳號自己發的）。
+  // 舊資料全部 null＝主帳號。
+  try {
+    await db.$executeRawUnsafe(`ALTER TABLE fb_delete_task ADD COLUMN IF NOT EXISTS identity_id VARCHAR(64) NULL`);
+  } catch {
+    // 同上
   }
   await db.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS fb_delete_task_run (
@@ -925,14 +960,22 @@ export async function listFbGroups(opts?: {
   onlyActive?: boolean;
   /** true = 只回封存的；false/undefined = 只回沒封存的；"all" = 全部 */
   hidden?: boolean | "all";
+  /**
+   * 2026-10-07 發文身分：只回這個身分的社團清單。不傳／null／"main" ＝ 主帳號的（舊資料全在這，
+   * 所以沒新增身分時結果跟以前一模一樣）；"all" ＝ 不分身分全回（排程頁要一次載完各身分的社團用）。
+   */
+  identityId?: string | null | "all";
 }): Promise<FbGroupRow[]> {
   await ensureFbCoreTables();
+  const wantAllIdentities = opts?.identityId === "all";
+  const wantIdentity = wantAllIdentities ? null : normalizeIdentityId(opts?.identityId);
   // 人數多的排前面（觸及大的先看到）；沒抓過人數的排最後、照建立順序
   const rows = await db.$queryRawUnsafe<FbGroupRow[]>(
     `SELECT * FROM fb_group
       ORDER BY (member_count IS NULL) ASC, member_count DESC, created_at ASC`,
   );
   return rows.filter((g) => {
+    if (!wantAllIdentities && normalizeIdentityId(g.identity_id) !== wantIdentity) return false;
     const isHidden = g.hidden === 1;
     if (opts?.hidden === "all") {
       /* 全部 */
@@ -945,6 +988,56 @@ export async function listFbGroups(opts?: {
     if (opts?.channel && !acceptsChannel(g.accepts, opts.channel)) return false;
     return true;
   });
+}
+
+/** 發文身分管理頁用：每個身分名下有幾個社團、幾筆排程。key 是 identityIdForDisplay（主帳號＝"main"）。 */
+export type IdentityUsage = {
+  groups: number;
+  activeGroups: number;
+  pendingTasks: number;
+  doneTasks: number;
+  lastDoneAt: Date | null;
+};
+
+export async function identityUsage(): Promise<Map<string, IdentityUsage>> {
+  await ensureFbCoreTables();
+  const [g, t] = await Promise.all([
+    db.$queryRawUnsafe<Array<{ identity_id: string | null; n: unknown; active: unknown }>>(
+      `SELECT identity_id, COUNT(*) AS n,
+              SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active
+         FROM fb_group WHERE hidden IS NULL OR hidden = 0 GROUP BY identity_id`,
+    ),
+    db.$queryRawUnsafe<Array<{ identity_id: string | null; pending: unknown; done: unknown; last_at: Date | null }>>(
+      `SELECT identity_id,
+              SUM(CASE WHEN status IN ('pending','running') THEN 1 ELSE 0 END) AS pending,
+              SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS done,
+              MAX(CASE WHEN status = 'done' THEN updated_at END) AS last_at
+         FROM fb_task GROUP BY identity_id`,
+    ),
+  ]);
+  const out = new Map<string, IdentityUsage>();
+  const slot = (id: string | null): IdentityUsage => {
+    const key = identityIdForDisplay(id);
+    let u = out.get(key);
+    if (!u) {
+      u = { groups: 0, activeGroups: 0, pendingTasks: 0, doneTasks: 0, lastDoneAt: null };
+      out.set(key, u);
+    }
+    return u;
+  };
+  const num = (v: unknown) => Number(String(v ?? 0));
+  for (const r of g) {
+    const u = slot(r.identity_id);
+    u.groups += num(r.n);
+    u.activeGroups += num(r.active);
+  }
+  for (const r of t) {
+    const u = slot(r.identity_id);
+    u.pendingTasks += num(r.pending);
+    u.doneTasks += num(r.done);
+    if (r.last_at) u.lastDoneAt = new Date(r.last_at);
+  }
+  return out;
 }
 
 /** 台中／海線關鍵字 —— 用來一鍵封存「不是這區的」。 */
@@ -968,14 +1061,16 @@ export async function setGroupsHidden(ids: string[], hidden: boolean): Promise<v
  * 一鍵封存「名稱裡沒有台中/海線關鍵字」的社團。
  * 回傳封存了幾個。已經勾「啟用」的**不動**（本人特意選過就不要自作主張收掉）。
  */
-export async function hideNonHailineGroups(): Promise<{ hidden: number }> {
+export async function hideNonHailineGroups(identityId?: string | null): Promise<{ hidden: number }> {
   await ensureFbCoreTables();
-  const rows = await db.$queryRawUnsafe<Array<{ id: string; name: string; is_active: number; hidden: number | null }>>(
-    `SELECT id, name, is_active, hidden FROM fb_group`,
-  );
+  const want = normalizeIdentityId(identityId);
+  const rows = await db.$queryRawUnsafe<
+    Array<{ id: string; name: string; is_active: number; hidden: number | null; identity_id: string | null }>
+  >(`SELECT id, name, is_active, hidden, identity_id FROM fb_group`);
   const toHide = rows
     .filter(
       (g) =>
+        normalizeIdentityId(g.identity_id) === want &&
         g.hidden !== 1 &&
         g.is_active !== 1 &&
         !HAILINE_KEYWORDS.some((k) => g.name.includes(k)),
@@ -1019,11 +1114,16 @@ export async function getFbGroup(id: string): Promise<FbGroupRow | null> {
  */
 export async function addFbGroups(
   entries: Array<{ name: string; url: string; accepts: string; cooldownDays: number }>,
+  /** 2026-10-07 發文身分：加進哪個身分的清單。不傳＝主帳號。判重只在同一個身分的清單裡比。 */
+  identityId?: string | null,
 ): Promise<{ added: number; updated: number }> {
   await ensureFbCoreTables();
-  const existing = await db.$queryRawUnsafe<Array<{ id: string; url: string }>>(
-    `SELECT id, url FROM fb_group`,
-  );
+  const identity = normalizeIdentityId(identityId);
+  const existing = (
+    await db.$queryRawUnsafe<Array<{ id: string; url: string; identity_id: string | null }>>(
+      `SELECT id, url, identity_id FROM fb_group`,
+    )
+  ).filter((g) => normalizeIdentityId(g.identity_id) === identity);
   const byKey = new Map(existing.map((g) => [parseGroupKey(g.url), g.id]));
 
   let added = 0;
@@ -1046,12 +1146,13 @@ export async function addFbGroups(
     } else {
       const id = randomUUID().replace(/-/g, "");
       await db.$executeRawUnsafe(
-        "INSERT INTO fb_group (id, name, url, accepts, cooldown_days, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)",
+        "INSERT INTO fb_group (id, name, url, accepts, cooldown_days, is_active, identity_id, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)",
         id,
         e.name,
         url,
         e.accepts,
         e.cooldownDays,
+        identity,
       );
       byKey.set(key, id);
       added += 1;
@@ -1107,9 +1208,16 @@ export async function syncGroupsFromScrape(
     hasDiscussion: boolean | null;
     hasMarketplace: boolean | null;
   }>,
+  /** 2026-10-07 發文身分：這批是哪個帳號登入抓到的。不傳＝主帳號。判重只在同一個身分的清單裡比。 */
+  identityId?: string | null,
 ): Promise<{ added: number; updated: number }> {
   await ensureFbCoreTables();
-  const existing = await db.$queryRawUnsafe<Array<{ id: string; url: string }>>(`SELECT id, url FROM fb_group`);
+  const identity = normalizeIdentityId(identityId);
+  const existing = (
+    await db.$queryRawUnsafe<Array<{ id: string; url: string; identity_id: string | null }>>(
+      `SELECT id, url, identity_id FROM fb_group`,
+    )
+  ).filter((g) => normalizeIdentityId(g.identity_id) === identity);
   const byKey = new Map(existing.map((g) => [parseGroupKey(g.url), g.id]));
 
   let added = 0;
@@ -1160,8 +1268,8 @@ export async function syncGroupsFromScrape(
       const id = randomUUID().replace(/-/g, "");
       await db.$executeRawUnsafe(
         `INSERT INTO fb_group
-           (id, name, url, accepts, cooldown_days, is_active, member_count, privacy, needs_approval, has_discussion, has_marketplace, scanned_at, created_at)
-         VALUES (?, ?, ?, ?, 7, 0, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+           (id, name, url, accepts, cooldown_days, is_active, member_count, privacy, needs_approval, has_discussion, has_marketplace, scanned_at, identity_id, created_at)
+         VALUES (?, ?, ?, ?, 7, 0, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         id,
         e.name.slice(0, 200),
         url.slice(0, 500),
@@ -1172,6 +1280,7 @@ export async function syncGroupsFromScrape(
         b(e.hasDiscussion),
         b(e.hasMarketplace),
         scannedAt,
+        identity,
       );
       byKey.set(key, id);
       added += 1;
@@ -1248,6 +1357,8 @@ export async function createFbTask(data: {
   expiresAt?: Date | null;
   /** 擬真抖動秒數。不給就現抽一個；「立即發佈」要給 0。 */
   jitterSec?: number;
+  /** 2026-10-07 發文身分：用哪個身分發。不給／"main"＝主帳號（存 NULL）。 */
+  identityId?: string | null;
 }): Promise<string> {
   await ensureFbCoreTables();
   await ensureFbRunnerTable();
@@ -1255,13 +1366,14 @@ export async function createFbTask(data: {
   const jitterSec = Math.max(0, Math.floor(data.jitterSec ?? rollJitterSec()));
 
   await db.$executeRawUnsafe(
-    `INSERT INTO fb_task (id, draft_id, title, run_at, status, channel, created_at)
-     VALUES (?, ?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)`,
+    `INSERT INTO fb_task (id, draft_id, title, run_at, status, channel, identity_id, created_at)
+     VALUES (?, ?, ?, ?, 'pending', ?, ?, CURRENT_TIMESTAMP)`,
     taskId,
     data.draftId,
     data.title.slice(0, 300),
     data.runAt,
     data.channel,
+    normalizeIdentityId(data.identityId),
   );
 
   let order = 0;
@@ -1698,9 +1810,16 @@ export async function failTask(taskId: string, error: string, maxAttempts = 3): 
 export async function claimNextMarketplaceTask(
   workerId: string,
   now = new Date(),
+  /**
+   * 2026-10-07 發文身分：只認領「登入檔有效」的身分的任務（不傳＝不限制，跟以前一樣）。
+   * 清單裡放 identity_id（主帳號放 null 或 "main"）。🔴 認領會把任務改成 running、attempts+1，
+   * 登入沒接的身分不該被認領（跟以前「主帳號沒登入就整條路不認領」是同一個道理，只是現在分身分判斷）。
+   */
+  allowedIdentityIds?: Array<string | null>,
 ): Promise<FbTaskRow | null> {
   await ensureFbCoreTables();
   await ensureFbRunnerTable();
+  const allowed = allowedIdentityIds ? new Set(allowedIdentityIds.map((x) => normalizeIdentityId(x))) : null;
   const staleBefore = new Date(now.getTime() - CLAIM_STALE_MINUTES * 60_000);
 
   // 過期的先關掉（桌機關著、隔天才開機，不會突然把昨天的商品刊出去）
@@ -1721,8 +1840,8 @@ export async function claimNextMarketplaceTask(
     );
   }
 
-  const candidates = await db.$queryRaw<Array<{ id: string }>>`
-    SELECT t.id
+  const allCandidates = await db.$queryRaw<Array<{ id: string; identity_id: string | null }>>`
+    SELECT t.id, t.identity_id
       FROM fb_task t
       JOIN fb_task_run r ON r.task_id = t.id
      WHERE t.status IN ('pending', 'running')
@@ -1730,8 +1849,10 @@ export async function claimNextMarketplaceTask(
        AND DATE_ADD(t.run_at, INTERVAL r.jitter_sec SECOND) <= ${now}
        AND (r.claimed_at IS NULL OR r.claimed_at < ${staleBefore})
      ORDER BY t.run_at ASC
-     LIMIT 5
+     LIMIT 20
   `;
+  // 登入沒接的身分整個跳過（不認領、不動 attempts）。多撈幾筆再篩，免得前幾筆都是沒登入的身分、把有登入的擋在後面
+  const candidates = (allowed ? allCandidates.filter((c) => allowed.has(normalizeIdentityId(c.identity_id))) : allCandidates).slice(0, 5);
   // 節奏保護：一般貼文剛發完／上一筆 Marketplace 太近／今天到上限 → 這輪不認領（見 fb-rhythm.ts）
   const snap = candidates.length ? await rhythmSnapshot(now) : null;
   for (const c of candidates) {
@@ -1835,12 +1956,14 @@ export async function createDeleteTask(data: {
   autoConfirm: boolean;
   /** 只清這一個社團的（2026-09-19「按社團清空」用）。留空＝不限社團，維持原本的「按工作流清空」行為。 */
   groupId?: string | null;
+  /** 2026-10-07 發文身分：用哪個帳號的登入去刪。不給／"main"＝主帳號（存 NULL）。 */
+  identityId?: string | null;
 }): Promise<string> {
   await ensureFbDeleteTables();
   const id = randomUUID().replace(/-/g, "");
   await db.$executeRawUnsafe(
-    `INSERT INTO fb_delete_task (id, draft_id, title, match_text, max_items, older_than_days, run_at, status, group_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)`,
+    `INSERT INTO fb_delete_task (id, draft_id, title, match_text, max_items, older_than_days, run_at, status, group_id, identity_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, CURRENT_TIMESTAMP)`,
     id,
     data.draftId,
     data.title.slice(0, 300),
@@ -1849,6 +1972,7 @@ export async function createDeleteTask(data: {
     data.olderThanDays,
     data.runAt,
     data.groupId || null,
+    normalizeIdentityId(data.identityId),
   );
   const expiresAt = new Date(data.runAt.getTime() + DEFAULT_DELETE_EXPIRE_HOURS * 3_600_000);
   await db.$executeRawUnsafe(
@@ -1896,11 +2020,14 @@ export async function getDeleteTaskRun(id: string): Promise<FbDeleteTaskRunRow |
  */
 
 /** 已經有 pending／running 的清空任務在排了嗎？兩張新清單都要標「已排入」避免使用者重複點。 */
-async function queuedDeleteKeys(): Promise<{ drafts: Set<string>; groups: Set<string> }> {
+async function queuedDeleteKeys(identityId?: string | null): Promise<{ drafts: Set<string>; groups: Set<string> }> {
   await ensureFbDeleteTables();
-  const rows = await db.$queryRaw<Array<{ draft_id: string; group_id: string | null }>>`
-    SELECT draft_id, group_id FROM fb_delete_task WHERE status IN ('pending', 'running')
-  `;
+  const identity = normalizeIdentityId(identityId);
+  const rows = await db.$queryRawUnsafe<Array<{ draft_id: string; group_id: string | null }>>(
+    `SELECT draft_id, group_id FROM fb_delete_task
+      WHERE status IN ('pending', 'running') AND ${identity ? "identity_id = ?" : "identity_id IS NULL"}`,
+    ...(identity ? [identity] : []),
+  );
   const drafts = new Set<string>();
   const groups = new Set<string>();
   for (const r of rows) {
@@ -1928,10 +2055,16 @@ export type DeletableDraftRow = {
   alreadyQueued: boolean;
 };
 
-/** 「按工作流清空」：每一則發過的文案一列，篇數＝發到幾個地方（含自己的動態）。 */
-export async function listDeletableDrafts(): Promise<DeletableDraftRow[]> {
+/**
+ * 「按工作流清空」：每一則發過的文案一列，篇數＝發到幾個地方（含自己的動態）。
+ *
+ * 2026-10-07 發文身分：只列「這個身分發的」（預設主帳號）。刪文是用登入帳號去自己的活動紀錄找，
+ * 所以一定要用當初發文的那個帳號登入才刪得到、也才不會碰到別的帳號的貼文——清單跟刪除任務都按身分分開。
+ */
+export async function listDeletableDrafts(identityId?: string | null): Promise<DeletableDraftRow[]> {
   await ensureFbCoreTables();
-  const rows = await db.$queryRaw<
+  const identity = normalizeIdentityId(identityId);
+  const rows = await db.$queryRawUnsafe<
     Array<{
       draft_id: string;
       title: string;
@@ -1942,8 +2075,8 @@ export async function listDeletableDrafts(): Promise<DeletableDraftRow[]> {
       group_count: bigint;
       last_at: Date | null;
     }>
-  >`
-    SELECT t.draft_id AS draft_id, d.title AS title, d.post_text AS post_text,
+  >(
+    `SELECT t.draft_id AS draft_id, d.title AS title, d.post_text AS post_text,
            COUNT(*) AS posted_count,
            SUM(CASE WHEN i.channel = 'group' THEN 1 ELSE 0 END) AS group_posted_count,
            SUM(CASE WHEN i.channel = 'self' THEN 1 ELSE 0 END) AS self_count,
@@ -1953,10 +2086,12 @@ export async function listDeletableDrafts(): Promise<DeletableDraftRow[]> {
       JOIN fb_task t ON t.id = i.task_id
       JOIN fb_draft d ON d.id = t.draft_id
      WHERE i.status = 'posted' AND i.deleted_at IS NULL
+       AND ${identity ? "t.identity_id = ?" : "t.identity_id IS NULL"}
      GROUP BY t.draft_id, d.title, d.post_text
-     ORDER BY MAX(i.done_at) DESC
-  `;
-  const queued = await queuedDeleteKeys();
+     ORDER BY MAX(i.done_at) DESC`,
+    ...(identity ? [identity] : []),
+  );
+  const queued = await queuedDeleteKeys(identity);
   return rows.map((r) => ({
     draftId: r.draft_id,
     title: r.title,
@@ -1991,10 +2126,11 @@ export type DeletableGroupRow = {
   alreadyQueued: boolean;
 };
 
-/** 「按社團清空」：每一個被貼過的社團一列，篇數＝這個社團收過幾篇我們發的（可能橫跨多則文案）。 */
-export async function listDeletableGroups(): Promise<DeletableGroupRow[]> {
+/** 「按社團清空」：每一個被貼過的社團一列，篇數＝這個社團收過幾篇我們發的（可能橫跨多則文案）。只列這個身分發的（預設主帳號）。 */
+export async function listDeletableGroups(identityId?: string | null): Promise<DeletableGroupRow[]> {
   await ensureFbCoreTables();
-  const rows = await db.$queryRaw<
+  const identity = normalizeIdentityId(identityId);
+  const rows = await db.$queryRawUnsafe<
     Array<{
       group_id: string | null;
       group_name: string | null;
@@ -2005,18 +2141,20 @@ export async function listDeletableGroups(): Promise<DeletableGroupRow[]> {
       n: bigint;
       last_at: Date | null;
     }>
-  >`
-    SELECT i.group_id AS group_id, i.group_name AS group_name, i.group_url AS group_url,
+  >(
+    `SELECT i.group_id AS group_id, i.group_name AS group_name, i.group_url AS group_url,
            t.draft_id AS draft_id, d.title AS title, d.post_text AS post_text,
            COUNT(*) AS n, MAX(i.done_at) AS last_at
       FROM fb_task_item i
       JOIN fb_task t ON t.id = i.task_id
       JOIN fb_draft d ON d.id = t.draft_id
      WHERE i.status = 'posted' AND i.channel = 'group' AND i.group_id IS NOT NULL AND i.deleted_at IS NULL
-     GROUP BY i.group_id, i.group_name, i.group_url, t.draft_id, d.title, d.post_text
-  `;
+       AND ${identity ? "t.identity_id = ?" : "t.identity_id IS NULL"}
+     GROUP BY i.group_id, i.group_name, i.group_url, t.draft_id, d.title, d.post_text`,
+    ...(identity ? [identity] : []),
+  );
 
-  const queued = await queuedDeleteKeys();
+  const queued = await queuedDeleteKeys(identity);
   const hiddenRows = await db.$queryRaw<Array<{ id: string; hidden: number | null }>>`SELECT id, hidden FROM fb_group`;
   const hiddenSet = new Set(hiddenRows.filter((g) => g.hidden === 1).map((g) => g.id));
 
@@ -2146,16 +2284,24 @@ export async function finishDeleteTask(
  * 這則文案曾經發到哪些社團（還沒被清掉的）。「按工作流清空」的 runner 要一個社團一個社團開「你的內容」，
  * 從這裡拿清單。只回有網址的（沒網址開不了「你的內容」）。
  */
-export async function postedGroupsForDraft(draftId: string): Promise<Array<{ id: string; name: string; url: string }>> {
+export async function postedGroupsForDraft(
+  draftId: string,
+  /** 2026-10-07 發文身分：只列這個身分發過的（預設主帳號）。刪文要用當初發文的帳號登入才刪得到。 */
+  identityId?: string | null,
+): Promise<Array<{ id: string; name: string; url: string }>> {
   await ensureFbCoreTables();
-  const rows = await db.$queryRaw<Array<{ group_id: string | null; group_name: string | null; group_url: string | null }>>`
-    SELECT i.group_id, i.group_name, i.group_url
+  const identity = normalizeIdentityId(identityId);
+  const rows = await db.$queryRawUnsafe<Array<{ group_id: string | null; group_name: string | null; group_url: string | null }>>(
+    `SELECT i.group_id, i.group_name, i.group_url
       FROM fb_task_item i
       JOIN fb_task t ON t.id = i.task_id
-     WHERE t.draft_id = ${draftId} AND i.status = 'posted' AND i.channel = 'group'
+     WHERE t.draft_id = ? AND i.status = 'posted' AND i.channel = 'group'
        AND i.deleted_at IS NULL AND i.group_url IS NOT NULL AND i.group_url <> ''
-     ORDER BY i.done_at ASC
-  `;
+       AND ${identity ? "t.identity_id = ?" : "t.identity_id IS NULL"}
+     ORDER BY i.done_at ASC`,
+    draftId,
+    ...(identity ? [identity] : []),
+  );
   const seen = new Set<string>();
   const out: Array<{ id: string; name: string; url: string }> = [];
   for (const r of rows) {
@@ -2191,13 +2337,18 @@ async function markItemsDeleted(taskId: string, resultJson: string): Promise<voi
   }
   if (perGroup.size === 0) return;
 
-  const candidates = await db.$queryRaw<Array<{ id: string; group_id: string | null; group_url: string | null }>>`
-    SELECT i.id, i.group_id, i.group_url
+  // 2026-10-07 發文身分：只標「這個刪除任務那個身分」發的那幾列（別的帳號發的同一則文案不能被連帶標成已刪）
+  const taskIdentity = normalizeIdentityId(task.identity_id);
+  const candidates = await db.$queryRawUnsafe<Array<{ id: string; group_id: string | null; group_url: string | null }>>(
+    `SELECT i.id, i.group_id, i.group_url
       FROM fb_task_item i
       JOIN fb_task t ON t.id = i.task_id
-     WHERE t.draft_id = ${task.draft_id} AND i.status = 'posted' AND i.channel = 'group' AND i.deleted_at IS NULL
-     ORDER BY i.done_at ASC
-  `;
+     WHERE t.draft_id = ? AND i.status = 'posted' AND i.channel = 'group' AND i.deleted_at IS NULL
+       AND ${taskIdentity ? "t.identity_id = ?" : "t.identity_id IS NULL"}
+     ORDER BY i.done_at ASC`,
+    task.draft_id,
+    ...(taskIdentity ? [taskIdentity] : []),
+  );
   const now = new Date();
   for (const [key, n] of perGroup) {
     const hits = candidates.filter((c) => parseGroupKey(c.group_url || "") === key || c.group_id === key).slice(0, n);

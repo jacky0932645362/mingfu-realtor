@@ -14,7 +14,16 @@ import { Icon } from "@/app/admin/_ui/icons";
 import { WhenPicker } from "@/app/admin/_ui/WhenPicker";
 import styles from "../fb.module.css";
 
-type GroupOption = { id: string; name: string; cooling: boolean; note: string };
+/** identityId：這個社團屬於哪個發文身分（主帳號＝"main"）。各身分的社團清單是分開的。 */
+type GroupOption = { id: string; name: string; identityId: string; cooling: boolean; note: string };
+/** 發文身分（2026-10-07）：排程時「用哪個身分發」。loginState 是桌機 runner 回報的。 */
+export type IdentityOption = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  loginState: "ok" | "missing" | "stale" | "unknown";
+  loginLabel: string;
+};
 /** IG／Threads 帳號連結狀態（2026-09-21）：沒連結就不給勾，勾了到點也發不出去。 */
 export type SocialOption = { connected: boolean; username: string | null; appConfigured: boolean };
 
@@ -31,6 +40,7 @@ function defaultRunAt(): string {
 export function ScheduleForm({
   drafts,
   groups,
+  identities,
   channel,
   preselectDraft,
   marketplaceOnly,
@@ -38,6 +48,7 @@ export function ScheduleForm({
 }: {
   drafts: Array<{ id: string; title: string }>;
   groups: GroupOption[];
+  identities: IdentityOption[];
   channel: string;
   preselectDraft: string;
   marketplaceOnly: boolean;
@@ -68,12 +79,33 @@ export function ScheduleForm({
   // Marketplace 專用：到點也照貼文庫那則存的社團清單一起勾社團上架。預設不勾 ——
   // 沒人看著的排程勾錯社團＝直接公開發到錯地方，要本人明確打開。
   const [mpCrosspost, setMpCrosspost] = useState(false);
+
+  // 發文身分（2026-10-07）：預設主帳號。state 裡的 id 可能不在選單裡（身分被停用／刪掉），
+  // 所以送出跟顯示都用校正過的值（同 safeDraftId 的道理）。
+  const defaultIdentityId = identities.find((i) => i.isDefault)?.id ?? identities[0]?.id ?? "main";
+  const [identityId, setIdentityId] = useState(defaultIdentityId);
+  const safeIdentityId = identities.some((i) => i.id === identityId) ? identityId : defaultIdentityId;
+  const currentIdentity = identities.find((i) => i.id === safeIdentityId);
+  const isMainIdentity = currentIdentity ? currentIdentity.isDefault : true;
+
+  // 各身分的社團清單是分開的（各帳號加入的社團不一樣）：只顯示、只送出「這個身分」的社團
+  const visibleGroups = useMemo(() => groups.filter((g) => g.identityId === safeIdentityId), [groups, safeIdentityId]);
   const [picked, setPicked] = useState<Set<string>>(
-    () => new Set(groups.filter((g) => !g.cooling).map((g) => g.id)),
+    () => new Set(groups.filter((g) => g.identityId === defaultIdentityId && !g.cooling).map((g) => g.id)),
   );
 
-  const chosen = useMemo(() => groups.filter((g) => picked.has(g.id)), [groups, picked]);
+  const chosen = useMemo(() => visibleGroups.filter((g) => picked.has(g.id)), [visibleGroups, picked]);
   const coolingChosen = chosen.filter((g) => g.cooling).length;
+
+  const pickIdentity = (id: string) => {
+    setIdentityId(id);
+    // 換身分＝換一份社團清單，預設值重算（冷卻中的不勾）；上一個身分勾的不會帶過來
+    setPicked(new Set(groups.filter((g) => g.identityId === id && !g.cooling).map((g) => g.id)));
+    if (id !== defaultIdentityId) {
+      setShareIg(false);
+      setShareThreads(false);
+    }
+  };
 
   const toggle = (id: string) =>
     setPicked((prev) => {
@@ -87,17 +119,19 @@ export function ScheduleForm({
     setMsg(null);
     if (!safeDraftId) return setMsg({ tone: "bad", text: "先挑一則文案" });
     start(async () => {
+      const visibleIds = new Set(visibleGroups.map((g) => g.id));
       const res = await scheduleTaskAction({
         draftId: safeDraftId,
         channel,
         runAt,
         postToTimeline: timeline,
-        groupIds: [...picked],
+        groupIds: [...picked].filter((id) => visibleIds.has(id)),
         autoPublish,
         runNow,
         crosspost: mpCrosspost,
-        shareIg: !marketplaceOnly && shareIg,
-        shareThreads: !marketplaceOnly && shareThreads,
+        shareIg: !marketplaceOnly && isMainIdentity && shareIg,
+        shareThreads: !marketplaceOnly && isMainIdentity && shareThreads,
+        identityId: safeIdentityId,
       });
       setMsg(res.ok ? { tone: "ok", text: res.message || "排好了" } : { tone: "bad", text: res.error || "排程失敗" });
       if (res.ok) router.refresh();
@@ -194,6 +228,52 @@ export function ScheduleForm({
         </div>
       </div>
 
+      {/* 發文身分（2026-10-07）：對應同業「用哪個身分發」。換身分＝換登入帳號＋換一份社團清單。 */}
+      <div className={styles.field} style={{ marginTop: 18 }}>
+        <label className={styles.label} style={{ color: CIS.textSub }}>
+          用哪個身分發
+        </label>
+        {identities.length === 0 ? (
+          <div style={{ fontSize: 13, color: CIS.textMute }}>
+            還沒有發文身分，請到{" "}
+            <Link href="/admin/fb/identities" style={{ color: CIS.blueSoft }}>
+              發文身分
+            </Link>{" "}
+            新增。
+          </div>
+        ) : (
+          <div className={styles.checkGrid}>
+            {identities.map((i) => {
+              const on = i.id === safeIdentityId;
+              const loginOk = i.loginState === "ok";
+              return (
+                <label
+                  key={i.id}
+                  className={styles.checkBox}
+                  style={{ background: CIS.bgSoft, border: `1px solid ${on ? "rgba(90,145,225,0.5)" : CIS.cardBorder}` }}
+                >
+                  <input type="radio" name="fb-identity" checked={on} onChange={() => pickIdentity(i.id)} />
+                  <span style={{ minWidth: 0 }}>
+                    <strong>{i.name}</strong>
+                    <span style={{ color: CIS.textMute, fontSize: 12 }}>{i.isDefault ? "　主帳號" : "　個人帳號"}</span>
+                    <div style={{ fontSize: 12, color: loginOk || i.isDefault ? CIS.textMute : "#b45309", marginTop: 2 }}>
+                      {i.isDefault && i.loginState === "unknown" ? "原本的帳號" : i.loginLabel}
+                    </div>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ fontSize: 12, color: CIS.textMute, lineHeight: 1.7 }}>
+          要加其他帳號（或看登入狀態）→{" "}
+          <Link href="/admin/fb/identities" style={{ color: CIS.blueSoft }}>
+            發文身分
+          </Link>
+          。換身分時下面的社團清單會跟著換成那個帳號的社團。
+        </div>
+      </div>
+
       {!marketplaceOnly ? (
         <>
           <div className={styles.field} style={{ marginTop: 18 }}>
@@ -206,7 +286,7 @@ export function ScheduleForm({
             >
               <input type="checkbox" checked={timeline} onChange={(e) => setTimeline(e.target.checked)} />
               <span>
-                <strong>貼在自己的 FB 動態</strong>
+                <strong>{isMainIdentity ? "貼在自己的 FB 動態" : `貼在「${currentIdentity?.name}」的 FB 動態`}</strong>
                 <div style={{ fontSize: 12, color: CIS.textMute, marginTop: 2 }}>
                   先貼自己的牆，社團的人點進來才看得到
                 </div>
@@ -226,7 +306,8 @@ export function ScheduleForm({
                   { key: "threads", label: "Threads", on: shareThreads, set: setShareThreads, opt: social?.threads, hint: "內文 500 字內（貼文庫那則的 Threads 分頁可改）；可以純文字" },
                 ] as const
               ).map((p) => {
-                const connected = Boolean(p.opt?.connected);
+                // IG／Threads 是整個系統只連一組的官方 API 帳號，只跟主帳號綁在一起（其他身分不能勾）
+                const connected = Boolean(p.opt?.connected) && isMainIdentity;
                 return (
                   <label
                     key={p.key}
@@ -245,7 +326,9 @@ export function ScheduleForm({
                         {connected ? `　@${p.opt?.username || "已連結"}` : ""}
                       </span>
                       <div style={{ fontSize: 12, color: CIS.textMute, marginTop: 2 }}>
-                        {connected ? (
+                        {!isMainIdentity ? (
+                          "只能跟主帳號一起發（IG／Threads 只連了一組官方帳號，其他身分再勾會把同一篇發好幾遍）"
+                        ) : connected ? (
                           p.hint
                         ) : (
                           <>
@@ -266,13 +349,25 @@ export function ScheduleForm({
 
           <div className={styles.field} style={{ marginTop: 14 }}>
             <label className={styles.label} style={{ color: CIS.textSub }}>
-              社團（{groups.length} 個收這種文）—— 橘色的是距離上次貼太近，預設不勾
+              {isMainIdentity ? "" : `「${currentIdentity?.name}」的`}社團（{visibleGroups.length} 個收這種文）—— 橘色的是距離上次貼太近，預設不勾
             </label>
-            {groups.length === 0 ? (
-              <div style={{ fontSize: 13, color: CIS.textMute }}>這個通路還沒有啟用的社團。去「社團清單」加幾個。</div>
+            {visibleGroups.length === 0 ? (
+              <div style={{ fontSize: 13, color: CIS.textMute }}>
+                {isMainIdentity ? (
+                  "這個通路還沒有啟用的社團。去「社團清單」加幾個。"
+                ) : (
+                  <>
+                    「{currentIdentity?.name}」還沒有啟用的社團。先到{" "}
+                    <Link href={`/admin/fb/groups?identity=${encodeURIComponent(safeIdentityId)}`} style={{ color: CIS.blueSoft }}>
+                      這個身分的社團清單
+                    </Link>{" "}
+                    把它加入的社團抓進來、勾起來；只貼在自己動態的話可以不選社團。
+                  </>
+                )}
+              </div>
             ) : (
               <div className={styles.checkGrid}>
-                {groups.map((g) => {
+                {visibleGroups.map((g) => {
                   const on = picked.has(g.id);
                   return (
                     <label
@@ -393,7 +488,7 @@ export function ScheduleForm({
               type="button"
               className={styles.btn}
               style={{ background: CIS.blue, color: "#fff" }}
-              disabled={pending || (!timeline && picked.size === 0)}
+              disabled={pending || (!timeline && chosen.length === 0 && !shareIg && !shareThreads)}
               onClick={() => submit(false)}
             >
               <Icon name={pending ? "loading" : "calendar"} size={15} />
@@ -403,14 +498,14 @@ export function ScheduleForm({
               type="button"
               className={styles.btn}
               style={{ background: "rgba(15,23,42,0.06)", color: CIS.text, borderColor: CIS.cardBorder }}
-              disabled={pending || (!timeline && picked.size === 0)}
+              disabled={pending || (!timeline && chosen.length === 0 && !shareIg && !shareThreads)}
               onClick={() => submit(true)}
             >
               <Icon name={pending ? "loading" : "zap"} size={15} />
               立即發佈
             </button>
             <span style={{ fontSize: 13, color: CIS.textMute }}>
-              共 {(timeline ? 1 : 0) + picked.size} 個地方
+              共 {(timeline ? 1 : 0) + chosen.length} 個地方
             </span>
           </div>
           <div style={{ marginTop: 8, fontSize: 12.5, color: CIS.textMute, lineHeight: 1.7 }}>

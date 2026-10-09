@@ -9,6 +9,8 @@ import {
   FB_CHANNELS,
   type FbChannel,
 } from "@/lib/fb-factory";
+import { listIdentities } from "@/lib/fb-identity";
+import { identityIdForDisplay } from "@/lib/fb-identity-core";
 import { CIS } from "@/app/admin/fb/_ui/theme";
 import { Icon, type IconName } from "@/app/admin/_ui/icons";
 import Link from "next/link";
@@ -20,17 +22,24 @@ export const dynamic = "force-dynamic";
 export default async function GroupsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ channel?: string; view?: string }>;
+  searchParams: Promise<{ channel?: string; view?: string; identity?: string }>;
 }) {
   const sp = await searchParams;
   const channel: FbChannel = isChannel(sp.channel) ? sp.channel : "post";
   const viewingArchived = sp.view === "archived";
 
+  // 2026-10-07 發文身分：各身分的社團清單是分開的。?identity= 不是有效的身分就當主帳號。
+  const identityRows = await listIdentities();
+  const identityKey =
+    identityRows.some((r) => identityIdForDisplay(r.id) === sp.identity) ? (sp.identity as string) : "main";
+  const currentIdentity = identityRows.find((r) => identityIdForDisplay(r.id) === identityKey);
+  const idParam = identityKey === "main" ? "" : `&identity=${encodeURIComponent(identityKey)}`;
+
   const [groups, postGroups, mpGroups, archived, lastPosted] = await Promise.all([
-    listFbGroups({ channel, hidden: viewingArchived }),
-    listFbGroups({ channel: "post" }),
-    listFbGroups({ channel: "marketplace" }),
-    listFbGroups({ hidden: true }),
+    listFbGroups({ channel, hidden: viewingArchived, identityId: identityKey }),
+    listFbGroups({ channel: "post", identityId: identityKey }),
+    listFbGroups({ channel: "marketplace", identityId: identityKey }),
+    listFbGroups({ hidden: true, identityId: identityKey }),
     lastPostedByGroup(),
   ]);
 
@@ -85,6 +94,32 @@ export default async function GroupsPage({
         可以一次處理一批。用不到的封存起來，重抓社團不會把它叫回來。
       </p>
 
+      {/* 發文身分切換（有兩個以上身分才出現）：各身分加入的社團不一樣，清單分開 */}
+      {identityRows.length > 1 ? (
+        <div className={styles.tabs} style={{ marginBottom: 6 }}>
+          {identityRows.map((r) => {
+            const key = identityIdForDisplay(r.id);
+            const active = key === identityKey;
+            return (
+              <Link
+                key={r.id}
+                href={`/admin/fb/groups?identity=${encodeURIComponent(key)}`}
+                className={styles.tab}
+                style={{
+                  background: active ? CIS.text : "rgba(15,23,42,0.05)",
+                  color: active ? "#fff" : CIS.textSub,
+                  border: `1px solid ${active ? CIS.text : CIS.cardBorder}`,
+                }}
+              >
+                <Icon name="user" size={13} />
+                {r.name}
+                {r.is_active === 1 ? "" : "（停用）"}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+
       {/* 通路 + 檢視 */}
       <div className={styles.tabs}>
         {FB_CHANNELS.map((c) => {
@@ -92,7 +127,7 @@ export default async function GroupsPage({
           return (
             <Link
               key={c.key}
-              href={`/admin/fb/groups?channel=${c.key}`}
+              href={`/admin/fb/groups?channel=${c.key}${idParam}`}
               className={styles.tab}
               style={{
                 background: active ? CIS.blue : "rgba(15,23,42,0.05)",
@@ -107,7 +142,7 @@ export default async function GroupsPage({
           );
         })}
         <Link
-          href={viewingArchived ? `/admin/fb/groups?channel=${channel}` : "/admin/fb/groups?view=archived"}
+          href={viewingArchived ? `/admin/fb/groups?channel=${channel}${idParam}` : `/admin/fb/groups?view=archived${idParam}`}
           className={styles.tab}
           style={{
             background: viewingArchived ? "rgba(146,152,166,0.2)" : "transparent",
@@ -133,7 +168,16 @@ export default async function GroupsPage({
             {scanned > 0 ? `${scanned} 個抓到人數` : "還沒抓過人數"}），發文清單裡{" "}
             <strong style={{ color: CIS.text }}>{activeCount}</strong> 個，已封存 {archived.length} 個。
             <br />
-            要重抓（更新人數、加新社團）：桌機 <code>tools/fb-autopost/</code> 跑 <code>npm run groups</code>。
+            {identityKey === "main" || !currentIdentity?.auth_key ? (
+              <>
+                要重抓（更新人數、加新社團）：桌機 <code>tools/fb-autopost/</code> 跑 <code>npm run groups</code>。
+              </>
+            ) : (
+              <>
+                這是「{currentIdentity.name}」的社團清單。要抓（或重抓）：桌機雙擊 <code>FB抓社團-其他帳號.bat</code>，
+                登入代號輸入 <code>{currentIdentity.auth_key}</code>（要先登入過這個帳號，見「發文身分」頁）。
+              </>
+            )}
             封存的社團重抓後還是封存的。
           </div>
         </div>
@@ -151,7 +195,7 @@ export default async function GroupsPage({
         </div>
       )}
 
-      <GroupsPanel groups={rows} channel={channel} viewingArchived={viewingArchived} />
+      <GroupsPanel groups={rows} channel={channel} viewingArchived={viewingArchived} identityId={identityKey} />
     </>
   );
 }

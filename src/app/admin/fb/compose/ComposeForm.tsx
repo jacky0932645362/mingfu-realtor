@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { generateFromPropertyAction, generateManualAction } from "@/lib/actions/fb-actions";
+import { importListingCopyAction } from "@/lib/actions/listing-import-actions";
 import { CIS } from "@/app/admin/fb/_ui/theme";
 import { Icon } from "@/app/admin/_ui/icons";
 import { PhotoPicker } from "@/app/admin/_ui/PhotoPicker";
@@ -45,6 +46,47 @@ export function ComposeForm({
   const [mBody, setMBody] = useState("");
   const [mPhotos, setMPhotos] = useState("");
   const [mVideo, setMVideo] = useState("");
+
+  // 貼連結／案號自動產生文案（2026-10-07）：帶進下面「手動填一筆」那幾格，改完再存
+  const [importRaw, setImportRaw] = useState("");
+  const [importing, startImport] = useTransition();
+  const [importMsg, setImportMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [catalogPhotos, setCatalogPhotos] = useState<string[]>([]);
+
+  const PHOTO_MAX = 10;
+
+  const doImport = () => {
+    setImportMsg(null);
+    setImportWarnings([]);
+    if (!importRaw.trim()) return setImportMsg({ tone: "bad", text: "先貼愛屋連結、591／樂屋連結，或愛屋案號" });
+    if (mBody.trim() && !window.confirm("下面「手動填一筆」已經有內文了，帶入會把標題跟內文換成新的（照片不動）。確定？")) return;
+    startImport(async () => {
+      const res = await importListingCopyAction(importRaw);
+      if (!res.ok) return setImportMsg({ tone: "bad", text: res.error });
+      setMTitle(res.title);
+      setMBody(res.body);
+      setCatalogPhotos(res.photos);
+      setImportWarnings(res.warnings);
+      setManualOpen(true);
+      setImportMsg({
+        tone: "ok",
+        text: `已帶入（${res.via}${res.no ? `，物件編號 ${res.no}` : ""}）。下面「手動填一筆」是可以改的草稿，改完按「存進貼文庫」。`,
+      });
+    });
+  };
+
+  /** 把型錄照片接在現有圖片後面，總數最多 PHOTO_MAX 張、已經有的不重複加。 */
+  const addCatalogPhotos = () => {
+    const current = mPhotos.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const room = Math.max(0, PHOTO_MAX - current.length);
+    const fresh = catalogPhotos.filter((u) => !current.includes(u)).slice(0, room);
+    if (room === 0) return setImportMsg({ tone: "bad", text: `照片已經滿 ${PHOTO_MAX} 張了，先刪幾張再帶入` });
+    if (fresh.length === 0) return setImportMsg({ tone: "bad", text: "型錄的照片都已經在清單裡了" });
+    setMPhotos([...current, ...fresh].join("\n"));
+    setManualOpen(true);
+    setImportMsg({ tone: "ok", text: `已帶入 ${fresh.length} 張型錄照片（照片欄現在共 ${current.length + fresh.length} 張，上限 ${PHOTO_MAX}）` });
+  };
 
   const hint = scenarios.find((s) => s.key === scenario)?.hint || "";
 
@@ -175,6 +217,79 @@ export function ComposeForm({
             </p>
           </>
         )}
+      </section>
+
+      {/* ── 貼連結／案號，自動產生文案（2026-10-07：照同業「從愛屋帶入」） ── */}
+      <section className={styles.card} style={{ background: CIS.card, border: `1px solid ${CIS.cardBorder}` }}>
+        <h3 className={styles.cardTitle}>
+          <Icon name="link" size={16} color={CIS.blueSoft} />
+          從愛屋帶入（貼物件連結或案號）
+        </h3>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            className={styles.input}
+            style={{ ...inputStyle, flex: "1 1 320px" }}
+            value={importRaw}
+            onChange={(e) => setImportRaw(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && importRaw.trim() && !importing) doImport();
+            }}
+            placeholder="貼愛屋連結、591／樂屋連結，或愛屋案號（像 AA6345420）"
+            disabled={importing}
+          />
+          <button
+            type="button"
+            className={styles.btn}
+            style={{ background: CIS.blue, color: "#fff" }}
+            disabled={importing || !importRaw.trim()}
+            onClick={doImport}
+          >
+            <Icon name={importing ? "loading" : "magic"} size={15} />
+            {importing ? "讀取中…" : "帶入"}
+          </button>
+        </div>
+        <p style={{ fontSize: 12.5, color: CIS.textMute, lineHeight: 1.75, margin: "8px 0 0" }}>
+          會帶入案名、開價、路名、格局、登記坪數、主＋附屬、樓別／樓高、屋齡、車位型式、環境特色，帶進來就是可以改的草稿。
+          地址只到路名（FB 貼文不放門牌）。型錄沒有的欄位整行省略，不會替你編。
+          591／樂屋連結會從頁面描述裡反查這戶的愛屋編號；樂屋會擋程式讀取（讀不進來）、591 出售通常也沒寫編號——
+          那種情況會明講，請改貼愛屋連結或案號。也可以直接把樂屋描述尾巴那行「編號：AD…」或愛屋連結複製貼上來。
+        </p>
+
+        {importMsg ? (
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: 13,
+              lineHeight: 1.7,
+              color: importMsg.tone === "ok" ? "#16a34a" : "#e11d48",
+            }}
+          >
+            {importMsg.tone === "ok" ? "✅ " : "❌ "}
+            {importMsg.text}
+          </div>
+        ) : null}
+        {importWarnings.length > 0 ? (
+          <ul style={{ margin: "8px 0 0", paddingLeft: 20, fontSize: 12.5, color: "#b45309", lineHeight: 1.75 }}>
+            {importWarnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        {catalogPhotos.length > 0 ? (
+          <div className={styles.btnRow} style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className={styles.btn}
+              style={{ background: "transparent", color: CIS.textSub, borderColor: CIS.cardBorder }}
+              onClick={addCatalogPhotos}
+            >
+              <Icon name="camera" size={15} />
+              帶入型錄照片（{catalogPhotos.length} 張）
+            </button>
+            <span style={{ fontSize: 12.5, color: CIS.textMute }}>最多再帶到 {PHOTO_MAX} 張，會接在現有圖片後面</span>
+          </div>
+        ) : null}
       </section>
 
       {/* ── 手動填一筆 ── */}

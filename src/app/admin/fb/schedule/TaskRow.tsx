@@ -16,6 +16,8 @@ type Task = {
   id: string;
   draftId: string;
   channel: string;
+  /** 2026-10-07 發文身分：用哪個身分發。只有一個身分時（沒新增過其他的）是 null，不顯示。 */
+  identityName?: string | null;
   title: string;
   runAt: string;
   runAtInput: string;
@@ -120,6 +122,16 @@ export function TaskRow({ task }: { task: Task }) {
         </div>
 
         <div className={styles.chipRow}>
+          {task.identityName ? (
+            <span
+              className={styles.chip}
+              style={{ background: CHIP.neutral.bg, color: CHIP.neutral.color, borderColor: CHIP.neutral.border }}
+              title="這筆用哪個發文身分（帳號）發"
+            >
+              <Icon name="user" size={11} />
+              {task.identityName}
+            </span>
+          ) : null}
           {task.channel === "post" ? (
             <span
               className={styles.chip}

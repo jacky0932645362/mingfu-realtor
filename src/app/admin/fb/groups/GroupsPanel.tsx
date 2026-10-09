@@ -51,10 +51,13 @@ const inputStyle = { background: CIS.bgSoft, border: `1px solid ${CIS.cardBorder
 export function GroupsPanel({
   groups,
   viewingArchived,
+  identityId = "main",
 }: {
   groups: Row[];
   channel: string;
   viewingArchived: boolean;
+  /** 2026-10-07 發文身分：目前看的是哪個身分的社團清單（手動加社團、一鍵封存都只動這個身分的）。 */
+  identityId?: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -132,12 +135,12 @@ export function GroupsPanel({
 
   const archiveSweep = () => {
     if (!window.confirm("把名稱裡沒有「台中／海線」關鍵字、而且還沒加進發文清單的社團全部封存？\n（發文清單裡的不會動。之後在「已封存」分頁可以拿回來。）")) return;
-    runBulk(archiveNonHailineAction);
+    runBulk(() => archiveNonHailineAction(identityId));
   };
 
   const addManual = () =>
     start(async () => {
-      const res = await addGroupsAction({ raw, accepts: "both", cooldownDays: 7 });
+      const res = await addGroupsAction({ raw, accepts: "both", cooldownDays: 7, identityId });
       flash(res);
       if (res.ok) {
         setRaw("");

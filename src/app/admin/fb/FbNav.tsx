@@ -19,6 +19,8 @@ const NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/admin/fb/schedule", label: "排程任務", icon: "calendar" },
   { href: "/admin/fb/activity", label: "執行紀錄", icon: "log" },
   { href: "/admin/fb/delete", label: "自動刪文", icon: "trash" },
+  // 2026-10-07：多帳號排程（本人看同業「用哪個身分發」要的）
+  { href: "/admin/fb/identities", label: "發文身分", icon: "user" },
   { href: "/admin/fb/social", label: "IG／Threads 帳號", icon: "share" },
   // 物件庫不在 /admin/fb 底下，但「先建物件才有 Marketplace 版本」是整條流程的第一步。
   // 本人 2026-09-22 在工廠裡翻不到「新增物件」，所以把入口放進這裡。

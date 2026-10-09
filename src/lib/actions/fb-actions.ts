@@ -71,6 +71,8 @@ import {
 } from "@/lib/fb-factory";
 import { publishSocialForDraft, disconnectSocialAccount, refreshSocialTokenIfNeeded } from "@/lib/social-publish";
 import { IG_CAPTION_LIMIT, THREADS_TEXT_LIMIT, socialLength } from "@/lib/fb-social-copy";
+import { getIdentity, type FbIdentityRow } from "@/lib/fb-identity";
+import { normalizeIdentityId, sameIdentity, loginStateOf } from "@/lib/fb-identity-core";
 import {
   normalizePacificInput,
   setDraftPacificUrl,
@@ -422,9 +424,13 @@ export async function addGroupsAction(input: {
   raw: string;
   accepts: string;
   cooldownDays: number;
+  /** 2026-10-07 發文身分：加進哪個身分的社團清單。不給＝主帳號。 */
+  identityId?: string;
 }): Promise<Result> {
   const denied = await guard();
   if (denied) return { ok: false, error: denied };
+  const identity = await getIdentity(input.identityId);
+  if (!identity) return { ok: false, error: "找不到這個發文身分" };
 
   const accepts = ["post", "marketplace", "both"].includes(input.accepts) ? input.accepts : "both";
   const cooldown = Number.isFinite(input.cooldownDays)
@@ -445,7 +451,7 @@ export async function addGroupsAction(input: {
   if (entries.length === 0) return { ok: false, error: "一個都沒解析出來，檢查一下貼的內容" };
 
   try {
-    const { added, updated } = await addFbGroups(entries);
+    const { added, updated } = await addFbGroups(entries, normalizeIdentityId(identity.id));
     revalidateAll();
     return { ok: true, message: `加了 ${added} 個${updated > 0 ? `，更新了 ${updated} 個本來就有的` : ""}` };
   } catch (e) {
@@ -525,12 +531,12 @@ export async function archiveGroupsAction(ids: string[], hidden: boolean): Promi
   }
 }
 
-/** 一鍵把「名稱裡沒有台中/海線關鍵字、也還沒勾啟用」的社團全部封存。 */
-export async function archiveNonHailineAction(): Promise<Result> {
+/** 一鍵把「名稱裡沒有台中/海線關鍵字、也還沒勾啟用」的社團全部封存。2026-10-07：只動這個身分的清單。 */
+export async function archiveNonHailineAction(identityId?: string): Promise<Result> {
   const denied = await guard();
   if (denied) return { ok: false, error: denied };
   try {
-    const { hidden } = await hideNonHailineGroups();
+    const { hidden } = await hideNonHailineGroups(normalizeIdentityId(identityId));
     revalidateAll();
     return {
       ok: true,
@@ -546,6 +552,29 @@ export async function archiveNonHailineAction(): Promise<Result> {
 
 /* ────────────────── 排程 ────────────────── */
 
+/**
+ * 排程用的發文身分檢查（2026-10-07）。
+ * 擋：找不到、已停用、粉絲專頁（第二段才做）。**不擋**「桌機還沒回報登入有效」——
+ * 剛用 .bat 登入完、runner 下一輪（最多 5 分）才會回報，這段空窗不能讓人排不了；
+ * 真的沒登入，runner 到點會明講哪個身分沒登入並把任務標失敗，這裡只在訊息尾巴提醒。
+ */
+async function resolveScheduleIdentity(
+  raw: string | undefined,
+): Promise<{ ok: true; identity: FbIdentityRow; warn: string } | { ok: false; error: string }> {
+  const identity = await getIdentity(raw);
+  if (!identity) return { ok: false, error: "找不到這個發文身分（可能被刪掉了），重新整理頁面再選" };
+  if (identity.is_active !== 1) return { ok: false, error: `發文身分「${identity.name}」已停用，到「發文身分」頁重新啟用才能排` };
+  if (identity.kind !== "personal") {
+    return { ok: false, error: `「${identity.name}」是粉絲專頁，粉專發文還沒開放（要先設定官方 API）` };
+  }
+  const state = loginStateOf(identity);
+  const warn =
+    identity.is_default !== 1 && state !== "ok"
+      ? ` ⚠️ 桌機回報「${identity.name}」${state === "missing" ? "還沒登入或登入失效" : "登入狀態還沒確認"}——到點發不出去的話，先到「發文身分」頁照步驟登入。`
+      : "";
+  return { ok: true, identity, warn };
+}
+
 export async function scheduleTaskAction(input: {
   draftId: string;
   channel: string;
@@ -560,6 +589,8 @@ export async function scheduleTaskAction(input: {
   /** 一般貼文專用（2026-09-21）：同時發到 IG／Threads（官方 API，runner 認領後先發這兩個）。 */
   shareIg?: boolean;
   shareThreads?: boolean;
+  /** 2026-10-07 發文身分：用哪個身分發。不給＝主帳號（跟加這個功能之前一模一樣）。 */
+  identityId?: string;
 }): Promise<Result> {
   const denied = await guard();
   if (denied) return { ok: false, error: denied };
@@ -570,6 +601,12 @@ export async function scheduleTaskAction(input: {
 
   const runAt = input.runNow ? new Date() : parseLocalDateTime(input.runAt);
   if (!runAt) return { ok: false, error: "時間格式不對" };
+
+  const idRes = await resolveScheduleIdentity(input.identityId);
+  if (!idRes.ok) return { ok: false, error: idRes.error };
+  const identityId = normalizeIdentityId(idRes.identity.id); // 主帳號＝null
+  const isMain = identityId === null;
+  const who = isMain ? "" : `（用「${idRes.identity.name}」發）`;
 
   // Marketplace（Phase 4，2026-09-06）：到點桌機 runner 會跑 post-marketplace.mjs 真的發。
   // 一定是全自動（沒人在旁邊按「發佈」），所以 autoPublish 恆為 true。
@@ -588,6 +625,7 @@ export async function scheduleTaskAction(input: {
         autoPublish: true,
         crosspost: Boolean(input.crosspost),
         jitterSec,
+        identityId,
       });
       await setDraftStatus(input.draftId, "marketplace", "scheduled");
       revalidateAll();
@@ -599,17 +637,20 @@ export async function scheduleTaskAction(input: {
         id,
         message:
           (input.runNow
-            ? `已排「立即發佈」${社團}。桌機 runner 下次輪詢（約 5 分內）會開瀏覽器發 —— 桌機要開著、runner 要在跑。`
-            : `已排在 ${input.runAt.replace("T", " ")} 發佈${社團}${抖動 ? `，擬真抖動：實際會在 ${抖動}` : ""}。到點桌機 runner 自動發；桌機關著就等開機，超過 ${DEFAULT_EXPIRE_HOURS} 小時沒發會失效。`) +
-          撞,
+            ? `已排「立即發佈」${社團}${who}。桌機 runner 下次輪詢（約 5 分內）會開瀏覽器發 —— 桌機要開著、runner 要在跑。`
+            : `已排在 ${input.runAt.replace("T", " ")} 發佈${社團}${who}${抖動 ? `，擬真抖動：實際會在 ${抖動}` : ""}。到點桌機 runner 自動發；桌機關著就等開機，超過 ${DEFAULT_EXPIRE_HOURS} 小時沒發會失效。`) +
+          撞 +
+          idRes.warn,
       };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "排程失敗" };
     }
   }
 
-  const shareIg = Boolean(input.shareIg);
-  const shareThreads = Boolean(input.shareThreads);
+  // IG／Threads 是整個系統只連一組的官方 API 帳號，只跟主帳號綁在一起：
+  // 其他身分排的任務不能再勾（否則同一則文案每個身分各發一次 IG／Threads＝同一篇洗好幾遍）
+  const shareIg = isMain && Boolean(input.shareIg);
+  const shareThreads = isMain && Boolean(input.shareThreads);
   if (!input.postToTimeline && input.groupIds.length === 0 && !shareIg && !shareThreads) {
     return { ok: false, error: "至少要挑一個地方（自己的動態、社團、IG 或 Threads）" };
   }
@@ -623,7 +664,13 @@ export async function scheduleTaskAction(input: {
   const groups: Array<{ id: string; name: string; url: string }> = [];
   for (const gid of input.groupIds) {
     const g = await getFbGroup(gid);
-    if (g) groups.push({ id: g.id, name: g.name, url: g.url });
+    if (!g) continue;
+    // 🔴 社團清單是每個身分各自的（各帳號加入的社團不一樣）。挑到別的身分的社團就擋下來——
+    //    拿 A 帳號的登入去發 B 帳號才有的社團，輕則發不進去、重則發到不該發的地方。
+    if (!sameIdentity(g.identity_id, identityId)) {
+      return { ok: false, error: `社團「${g.name}」不是「${idRes.identity.name}」的社團，重新整理頁面再挑一次` };
+    }
+    groups.push({ id: g.id, name: g.name, url: g.url });
   }
 
   try {
@@ -640,6 +687,7 @@ export async function scheduleTaskAction(input: {
       jitterSec,
       shareIg,
       shareThreads,
+      identityId,
     });
     await setDraftStatus(input.draftId, "post", "scheduled");
     revalidateAll();
@@ -657,13 +705,15 @@ export async function scheduleTaskAction(input: {
           ? 只有社群
             ? `已排「立即發佈」。桌機 runner 下次輪詢（約 5 分內）會用官方 API 發到 ${社群}（沒有 FB 目標）`
             : input.autoPublish
-              ? `已排「立即發佈」。桌機 runner 下次輪詢（約 5 分內）會開瀏覽器發（會真的按發布）${社群尾}`
-              : `已排「立即發佈」。桌機 runner 下次輪詢（約 5 分內）會開瀏覽器備好、停在最後一步等你按發布${社群尾}`
+              ? `已排「立即發佈」${who}。桌機 runner 下次輪詢（約 5 分內）會開瀏覽器發（會真的按發布）${社群尾}`
+              : `已排「立即發佈」${who}。桌機 runner 下次輪詢（約 5 分內）會開瀏覽器備好、停在最後一步等你按發布${社群尾}`
           : 只有社群
             ? `已排程，到點桌機 runner 用官方 API 發到 ${社群}（沒有 FB 目標）${尾}`
             : input.autoPublish
-              ? `已排程，到點桌機自己開瀏覽器發（會真的按發布）${尾}${社群尾}`
-              : `已排程，到點桌機備好、停在最後一步等你按發布${尾}${社群尾}`) + 撞,
+              ? `已排程${who}，到點桌機自己開瀏覽器發（會真的按發布）${尾}${社群尾}`
+              : `已排程${who}，到點桌機備好、停在最後一步等你按發布${尾}${社群尾}`) +
+        撞 +
+        idRes.warn,
     };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "排程失敗" };
