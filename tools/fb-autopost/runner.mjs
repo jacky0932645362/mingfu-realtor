@@ -114,13 +114,33 @@ function log(...a) {
   console.log(`[${localTimestamp()}]`, ...a);
 }
 
+/**
+ * 🔴 2026-10-09 抓到的坑：刪文／發文的子程式是同步跑的（spawnSync），一跑好幾分鐘，這段時間 runner 跟後台的
+ *    連線閒著；後台（或中間的伺服器）早就把閒置連線關掉了，runner 這邊卻沒察覺，下一次回報沿用那條死掉的連線
+ *    → 「fetch failed」，整份工作的「收尾」就這樣掉了（刪文其實刪完了，後台卻一直以為沒做完，重新曝光會卡在刪文中）。
+ *    修法：連線層級的失敗（不是後台回錯）等一秒重送一次。
+ *    只對「重送也不會出事」的動作做：回報結果、收尾、放回、標失敗、身分回報。認領（claim*）絕不重送——
+ *    萬一第一次其實有送到，重送會多認領一份工作。
+ */
+const 可以重送 = (action) => !String(action).startsWith("claim");
+
 async function call(action, body = {}) {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
-    body: JSON.stringify({ action, workerId: WORKER_ID, ...body }),
-    signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
-  });
+  const send = () =>
+    fetch(API, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ action, workerId: WORKER_ID, ...body }),
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    });
+  let res;
+  try {
+    res = await send();
+  } catch (e) {
+    const 連線斷了 = e instanceof TypeError && /fetch failed/i.test(String(e.message));
+    if (!連線斷了 || !可以重送(action)) throw e;
+    await new Promise((r) => setTimeout(r, 1000));
+    res = await send();
+  }
   const text = await res.text();
   let json;
   try {
@@ -158,7 +178,7 @@ function 身分登入說明(identity, file) {
   const s = authSessionStatus(file);
   return [
     `發文身分「${id.name}」${!s.檔案存在 ? "還沒存過登入狀態" : "的登入檔裡沒有真正的登入資訊（或已過期）"}。`,
-    `   👉 在桌機雙擊 FB登入-其他帳號.bat，登入代號輸入 ${id.authKey}，登入那個帳號後回視窗按 Enter。`,
+    `   👉 在桌機雙擊 FB其他帳號-1登入.bat，登入代號輸入 ${id.authKey}，登入那個帳號後回視窗按 Enter。`,
   ].join("\n");
 }
 
@@ -170,9 +190,26 @@ function 身分登入失敗原因(identity) {
     : `發文身分「${id.name}」登入狀態失效或還沒登入，要本人重跑一次登入（登入代號 ${id.authKey}）`;
 }
 
-/** 子行程的環境變數：指定這份工作用的登入檔。其他（FB_HOME 等測試用的覆寫）一律原樣帶過去。 */
-function 子行程環境(file) {
-  return { ...process.env, FB_AUTH_FILE: file };
+/**
+ * 子行程的環境變數：指定這份工作用的登入檔。其他（FB_HOME 等測試用的覆寫）一律原樣帶過去。
+ * 以粉專身分發社團（2026-10-09）：多帶粉專編號／網址，post.mjs 會切換成粉專、確認切換成功才發。
+ * 🔴 不是粉專的工作一律把這兩個清成空字串——不能讓上一層環境殘留的值害個人帳號的工作被當成粉專。
+ */
+function 子行程環境(file, identity) {
+  const page = identity && identity.actAsPage && identity.actAsPage.pageId ? identity.actAsPage : null;
+  return {
+    ...process.env,
+    FB_AUTH_FILE: file,
+    FB_ACT_AS_PAGE_ID: page ? String(page.pageId) : "",
+    FB_ACT_AS_PAGE_URL: page ? String(page.pageUrl || "") : "",
+  };
+}
+
+/** 給 log 用的身分說明：粉專會多講「透過哪個個人帳號」。 */
+function 身分說明(identity) {
+  const id = 身分資訊(identity);
+  if (id.actAsPage) return `（以粉專「${id.name}」身分，用「${id.viaName || "?"}」的登入切換）`;
+  return 是主帳號(id) ? "" : `（身分：${id.name}）`;
 }
 
 /* ── 把一份工作寫成 post.mjs 看得懂的貼文檔 ── */
@@ -249,8 +286,8 @@ async function 跑一份(job) {
   const { task, draft, targets } = job;
   const identity = 身分資訊(job.identity);
   const socialTargets = Array.isArray(job.socialTargets) ? job.socialTargets : [];
-  log(`📮 「${draft.title}」→ ${targets.length + socialTargets.length} 個地方${是主帳號(identity) ? "" : `（身分：${identity.name}）`}`);
-  for (const t of socialTargets) log(`   • ${t.platform === "ig" ? "Instagram" : "Threads"}（官方 API）`);
+  log(`📮 「${draft.title}」→ ${targets.length + socialTargets.length} 個地方${身分說明(identity)}`);
+  for (const t of socialTargets) log(`   • ${t.platform === "ig" ? "Instagram" : t.platform === "threads" ? "Threads" : "粉專動態"}（官方 API）`);
   for (const t of targets) log(`   • ${t.groupName || t.target}`);
 
   // 🔴 版本錯位保險：後台沒回 identity（後台還是舊版）、但資料庫裡這份工作其實指定了別的身分 → 絕不當主帳號發。
@@ -329,14 +366,14 @@ async function 跑一份(job) {
         cwd: import.meta.dirname,
         stdio: "inherit",
         timeout: POST_JOB_TIMEOUT_MS,
-        env: 子行程環境(authFile),
+        env: 子行程環境(authFile, identity),
       })
     : spawnSync(process.execPath, args, {
         cwd: import.meta.dirname,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
         timeout: POST_JOB_TIMEOUT_MS,
-        env: 子行程環境(authFile),
+        env: 子行程環境(authFile, identity),
       });
 
   // --attended 走 inherit，輸出已經直接印在畫面上，這裡拿不到字串。
@@ -427,7 +464,7 @@ async function 發到社群(task, socialTargets) {
     _socialPublish ??= await import(`${pathToFileURL(PROJECT_ROOT).href}/src/lib/social-publish.ts`);
     const outcomes = await _socialPublish.publishSocialItemsForTask(task.id);
     for (const o of outcomes) {
-      const name = o.platform === "ig" ? "Instagram" : "Threads";
+      const name = `${o.platform === "ig" ? "Instagram" : o.platform === "threads" ? "Threads" : "粉專"}「${o.identityName}」`;
       if (o.ok) log(`   ✅ ${name}：${o.url || o.note}`);
       else log(`   ❌ ${name}：${o.note.split(/\r?\n/)[0]}（已標失敗，不重試；改好後在貼文庫那則的 ${name} 分頁按「現在就發」）`);
     }

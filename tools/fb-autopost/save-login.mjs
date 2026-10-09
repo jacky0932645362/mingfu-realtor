@@ -128,7 +128,7 @@ await context.storageState({ path: TARGET_FILE });
 console.log(`\n✅ 確認已登入，狀態存到：${TARGET_FILE}`);
 console.log(
   identityArg
-    ? "   下一步：雙擊 FB抓社團-其他帳號.bat（同一個登入代號），把這個帳號的社團抓進後台。"
+    ? "   下一步：雙擊 FB其他帳號-2抓社團.bat（同一個登入代號），把這個帳號的社團抓進後台。"
     : "   下一步：npm run inspect（把 FB 發文框的結構抄下來）",
 );
 console.log("\n⚠️  這個檔等同 FB 帳號鑰匙，不要外流、不要 commit。");

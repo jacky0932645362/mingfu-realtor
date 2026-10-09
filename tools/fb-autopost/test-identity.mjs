@@ -134,6 +134,43 @@ ok("③ 含副檔名丟錯", throws(() => core.authFileNameFor("main.json")));
   ok("⑥ 登入成全新帳號 → 不撞", noDup === undefined);
 }
 
+/* ── ⑦ 以粉專身分發社團（2026-10-09）：切換後「是不是那個粉專」的判斷 ──
+ * 這是「絕不用借來的個人帳號發出去」的最後一道門：比不出來一律當「不是」。網站端與桌機端兩份要一模一樣。 */
+{
+  const PAGE_ID = "102938475610293";
+  const cases = [
+    ["profile.php?id=粉專編號", "https://www.facebook.com/profile.php?id=102938475610293", PAGE_ID, null, true],
+    ["/粉專編號 路徑", "https://www.facebook.com/102938475610293/", PAGE_ID, null, true],
+    ["自訂名稱（中文、網址編碼）", "https://www.facebook.com/%E6%88%BF%E4%BB%B2%E8%95%AD%E9%82%A6", PAGE_ID, "https://www.facebook.com/房仲蕭邦", true],
+    ["自訂名稱大小寫不同", "https://www.facebook.com/ChopinRealty", PAGE_ID, "https://www.facebook.com/chopinrealty", true],
+    ["m.facebook.com 也算", "https://m.facebook.com/profile.php?id=102938475610293", PAGE_ID, null, true],
+    ["停在個人帳號自己的頁面 → 不是", "https://www.facebook.com/profile.php?id=100001234567890", PAGE_ID, "https://www.facebook.com/chopinrealty", false],
+    ["個人帳號自訂名稱 → 不是", "https://www.facebook.com/ming.hsiao.123", PAGE_ID, "https://www.facebook.com/chopinrealty", false],
+    ["被踢去登入頁 → 不是", "https://www.facebook.com/login/?next=%2Fme", PAGE_ID, null, false],
+    ["卡在檢查點 → 不是", "https://www.facebook.com/checkpoint/1501092823525282/", PAGE_ID, null, false],
+    ["別的網站 → 不是", "https://evil-facebook.com/102938475610293", PAGE_ID, null, false],
+    ["假冒網域 → 不是", "https://www.facebook.com.evil.tw/profile.php?id=102938475610293", PAGE_ID, null, false],
+    ["沒有粉專編號也沒有自訂名稱 → 不是", "https://www.facebook.com/profile.php?id=102938475610293", "", null, false],
+    ["編號不是數字 → 不靠編號判斷", "https://www.facebook.com/abc", "abc", null, false],
+    ["網址壞掉 → 不是", "not a url", PAGE_ID, null, false],
+    ["粉專網址是 profile.php（沒自訂名稱）時不會拿 profile.php 當名稱比", "https://www.facebook.com/profile.php?id=999", PAGE_ID, "https://www.facebook.com/profile.php?id=102938475610293", false],
+  ];
+  for (const [name, finalUrl, pageId, pageUrl, want] of cases) {
+    const a = core.isActingAsPage(finalUrl, pageId, pageUrl);
+    const b = shared.isActingAsPage(finalUrl, pageId, pageUrl);
+    ok(`⑦ ${name}（網站端）`, a === want, `得到 ${a}`);
+    ok(`⑦ ${name}（桌機端）`, b === want, `得到 ${b}`);
+  }
+  for (const u of ["https://www.facebook.com/me", "https://www.facebook.com/groups/123", "https://www.facebook.com/profile.php?id=1", "https://example.com/abc", null, ""]) {
+    ok(`⑦ 不是自訂名稱：${u}`, core.pageSlugFromUrl(u) === null && shared.pageSlugFromUrl(u) === null);
+  }
+
+  // 官方 API 目標與身分種類
+  ok("⑦ 身分種類多了 ig／threads", core.isIdentityKind("ig") && core.isIdentityKind("threads") && !core.isIdentityKind("twitter"));
+  ok("⑦ API 目標只有 page／ig／threads", core.isApiChannel("page") && core.isApiChannel("ig") && core.isApiChannel("threads") && !core.isApiChannel("group") && !core.isApiChannel("self"));
+  ok("⑦ API 目標顯示名稱", core.apiChannelLabel("page") === "粉專動態" && core.apiChannelLabel("ig") === "Instagram");
+}
+
 rmSync(SANDBOX, { recursive: true, force: true });
 
 console.log(`\n${"─".repeat(60)}`);

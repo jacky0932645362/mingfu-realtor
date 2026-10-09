@@ -11,27 +11,31 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { isCurrentUserAdmin } from "@/lib/admin-check";
-import { isSocialPlatform, socialLabel } from "@/lib/fb-factory";
-import { socialExchangeCode } from "@/lib/social-publish";
+import { isOAuthPlatform, socialExchangeCode } from "@/lib/social-publish";
+
+function label(p: string): string {
+  return p === "ig" ? "Instagram" : p === "threads" ? "Threads" : "Facebook 粉專";
+}
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, ctx: { params: Promise<{ platform: string }> }) {
   const origin = new URL(req.url).origin;
-  const back = (q: string) => NextResponse.redirect(`${origin}/admin/fb/social?${q}`);
+  // 2026-10-09：帳號都整合進「發文身分」頁
+  const back = (q: string) => NextResponse.redirect(`${origin}/admin/fb/identities?${q}`);
 
   if (!(await isCurrentUserAdmin())) {
-    return NextResponse.redirect(`${origin}/api/auth/signin?callbackUrl=${encodeURIComponent("/admin/fb/social")}`);
+    return NextResponse.redirect(`${origin}/api/auth/signin?callbackUrl=${encodeURIComponent("/admin/fb/identities")}`);
   }
   const { platform } = await ctx.params;
-  if (!isSocialPlatform(platform)) return back(`error=${encodeURIComponent("平台不對")}`);
+  if (!isOAuthPlatform(platform)) return back(`error=${encodeURIComponent("平台不對")}`);
 
   const u = new URL(req.url);
   // Meta 那邊按「取消」或沒授權
   const err = u.searchParams.get("error") || u.searchParams.get("error_reason");
   if (err) {
     const desc = u.searchParams.get("error_description") || err;
-    return back(`error=${encodeURIComponent(`${socialLabel(platform)} 授權沒完成：${desc}`)}`);
+    return back(`error=${encodeURIComponent(`${label(platform)} 授權沒完成：${desc}`)}`);
   }
   const code = u.searchParams.get("code") || "";
   const state = u.searchParams.get("state") || "";
@@ -45,10 +49,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ platform: strin
 
   try {
     const st = await socialExchangeCode(platform, code);
-    const res = back(`ok=${platform}&user=${encodeURIComponent(st.username || st.userId || "")}`);
+    const res = back(`ok=${platform}&user=${encodeURIComponent(st.names.join("、"))}`);
     res.cookies.set(`social_oauth_state_${platform}`, "", { path: "/", maxAge: 0 });
     return res;
   } catch (e) {
-    return back(`error=${encodeURIComponent(`${socialLabel(platform)} 換 token 失敗：${e instanceof Error ? e.message : String(e)}`)}`);
+    return back(`error=${encodeURIComponent(`${label(platform)} 換 token 失敗：${e instanceof Error ? e.message : String(e)}`)}`);
   }
 }

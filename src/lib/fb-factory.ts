@@ -98,6 +98,7 @@ export function itemTargetName(itemChannel: string, groupName?: string | null): 
   if (itemChannel === "self") return "自己的 FB 動態";
   if (itemChannel === "ig") return "Instagram";
   if (itemChannel === "threads") return "Threads";
+  if (itemChannel === "page") return "粉專動態";
   return groupName || "社團";
 }
 
@@ -198,7 +199,14 @@ export type FbTaskItemRow = {
   note: string | null;
   done_at: Date | null;
   sort_order: number;
+  /** 2026-10-09：粉專動態／IG／Threads 目標發到哪一個身分（NULL＝舊資料） */
+  target_identity_id?: string | null;
 };
+
+/** 這個 item 是不是走官方 API 的（粉專動態／IG／Threads）——runner 認領後先用 API 發，不開瀏覽器。 */
+export function isApiItem(itemChannel: string): boolean {
+  return itemChannel === "page" || itemChannel === "ig" || itemChannel === "threads";
+}
 
 /** runner 的私有記帳，1:1 對 fb_task。這是唯一一張「我建的」表。 */
 export type FbTaskRunRow = {
@@ -430,6 +438,8 @@ async function ensureFbTaskItemColumns(): Promise<void> {
   for (const [name, def] of [
     ["deleted_at", "DATETIME NULL"],
     ["delete_task_id", "VARCHAR(64) NULL"],
+    // 2026-10-09：粉專動態／IG／Threads 目標要發到哪一個身分（多組帳號）。NULL＝舊資料（當時只有一組）
+    ["target_identity_id", "VARCHAR(64) NULL"],
   ] as Array<[string, string]>) {
     try {
       await db.$executeRawUnsafe(`ALTER TABLE fb_task_item ADD COLUMN IF NOT EXISTS ${name} ${def}`);
@@ -1354,6 +1364,11 @@ export async function createFbTask(data: {
   /** 一般貼文專用（2026-09-21）：同時發到 IG／Threads（各自一個 fb_task_item，channel='ig'｜'threads'）。 */
   shareIg?: boolean;
   shareThreads?: boolean;
+  /**
+   * 2026-10-09：走官方 API 的目標，每個都指定身分（粉專動態／IG／Threads，可以好幾組）。
+   * 有給這個就不看 shareIg／shareThreads。
+   */
+  apiTargets?: Array<{ channel: "page" | "ig" | "threads"; identityId: string }>;
   expiresAt?: Date | null;
   /** 擬真抖動秒數。不給就現抽一個；「立即發佈」要給 0。 */
   jitterSec?: number;
@@ -1386,16 +1401,21 @@ export async function createFbTask(data: {
       order++,
     );
   }
-  // IG／Threads 排在 FB 動態後面、社團前面：runner 認領後先用 API 發這兩個（幾十秒），再開瀏覽器跑社團
-  for (const platform of [data.shareIg ? "ig" : null, data.shareThreads ? "threads" : null]) {
-    if (!platform) continue;
+  // 走官方 API 的（粉專動態／IG／Threads）排在 FB 動態後面、社團前面：runner 認領後先用 API 發（幾十秒），再開瀏覽器跑社團
+  const apiTargets =
+    data.apiTargets ??
+    [data.shareIg ? "ig" : null, data.shareThreads ? "threads" : null]
+      .filter((p): p is "ig" | "threads" => Boolean(p))
+      .map((channel) => ({ channel, identityId: "" }));
+  for (const t of apiTargets) {
     await db.$executeRawUnsafe(
-      `INSERT INTO fb_task_item (id, task_id, channel, status, sort_order)
-       VALUES (?, ?, ?, 'pending', ?)`,
+      `INSERT INTO fb_task_item (id, task_id, channel, status, sort_order, target_identity_id)
+       VALUES (?, ?, ?, 'pending', ?, ?)`,
       randomUUID().replace(/-/g, ""),
       taskId,
-      platform,
+      t.channel,
       order++,
+      t.identityId || null,
     );
   }
   for (const g of data.groups) {
@@ -2745,4 +2765,19 @@ export async function listBoardRows(channel: FbChannel): Promise<BoardRow[]> {
       recycleNote: d.recycle_note || null,
     };
   });
+}
+
+/** 粉專動態／IG／Threads 帳號（2026-10-09）各自排了幾筆、發了幾筆（看 fb_task_item.target_identity_id）。 */
+export async function apiIdentityUsage(): Promise<Map<string, { pending: number; posted: number; failed: number; lastAt: Date | null }>> {
+  await ensureFbCoreTables();
+  const rows = await db.$queryRawUnsafe<Array<{ id: string; pending: unknown; posted: unknown; failed: unknown; last_at: Date | null }>>(
+    `SELECT target_identity_id AS id,
+            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN status = 'posted' THEN 1 ELSE 0 END) AS posted,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+            MAX(CASE WHEN status = 'posted' THEN done_at ELSE NULL END) AS last_at
+       FROM fb_task_item WHERE target_identity_id IS NOT NULL GROUP BY target_identity_id`,
+  );
+  const n = (v: unknown) => Number(String(v ?? 0)) || 0;
+  return new Map(rows.map((r) => [r.id, { pending: n(r.pending), posted: n(r.posted), failed: n(r.failed), lastAt: r.last_at }]));
 }

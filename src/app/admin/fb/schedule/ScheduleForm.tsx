@@ -20,12 +20,17 @@ type GroupOption = { id: string; name: string; identityId: string; cooling: bool
 export type IdentityOption = {
   id: string;
   name: string;
+  /** personal＝個人帳號；page＝以粉專身分發社團（借 viaName 那個個人帳號的登入切換，2026-10-09） */
+  kind: "personal" | "page";
   isDefault: boolean;
   loginState: "ok" | "missing" | "stale" | "unknown";
   loginLabel: string;
+  /** 社團清單用誰的（粉專＝它借的個人帳號那份） */
+  groupOwnerId: string;
+  viaName: string | null;
 };
-/** IG／Threads 帳號連結狀態（2026-09-21）：沒連結就不給勾，勾了到點也發不出去。 */
-export type SocialOption = { connected: boolean; username: string | null; appConfigured: boolean };
+/** 「同時發到」的官方 API 帳號（2026-10-09）：每一組粉專／IG／Threads 一個勾選框，自由勾。ready＝有授權鑰匙。 */
+export type ApiAccountOption = { id: string; kind: "page" | "ig" | "threads"; name: string; sub: string | null; ready: boolean };
 
 const inputStyle = { background: CIS.bgSoft, border: `1px solid ${CIS.cardBorder}`, color: CIS.text };
 
@@ -44,7 +49,7 @@ export function ScheduleForm({
   channel,
   preselectDraft,
   marketplaceOnly,
-  social,
+  apiAccounts = [],
 }: {
   drafts: Array<{ id: string; title: string }>;
   groups: GroupOption[];
@@ -52,7 +57,7 @@ export function ScheduleForm({
   channel: string;
   preselectDraft: string;
   marketplaceOnly: boolean;
-  social?: { ig: SocialOption; threads: SocialOption };
+  apiAccounts?: ApiAccountOption[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -73,25 +78,36 @@ export function ScheduleForm({
   const [runAt, setRunAt] = useState(defaultRunAt);
   const [timeline, setTimeline] = useState(true);
   const [autoPublish, setAutoPublish] = useState(true);
-  // 同時發到 IG／Threads（官方 API）。預設不勾：那是公開發到另外兩個平台，要本人明確打開。
-  const [shareIg, setShareIg] = useState(false);
-  const [shareThreads, setShareThreads] = useState(false);
+  // 同時發到粉專動態／IG／Threads（官方 API，每一組帳號各自勾）。預設都不勾：那是公開發到別的地方，要本人明確打開。
+  const [apiPicked, setApiPicked] = useState<Set<string>>(() => new Set());
+  const toggleApi = (id: string) =>
+    setApiPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   // Marketplace 專用：到點也照貼文庫那則存的社團清單一起勾社團上架。預設不勾 ——
   // 沒人看著的排程勾錯社團＝直接公開發到錯地方，要本人明確打開。
   const [mpCrosspost, setMpCrosspost] = useState(false);
 
   // 發文身分（2026-10-07）：預設主帳號。state 裡的 id 可能不在選單裡（身分被停用／刪掉），
   // 所以送出跟顯示都用校正過的值（同 safeDraftId 的道理）。
-  const defaultIdentityId = identities.find((i) => i.isDefault)?.id ?? identities[0]?.id ?? "main";
+  // Marketplace 只能用個人帳號（粉專身分只發一般貼文的社團）
+  const idChoices = marketplaceOnly ? identities.filter((i) => i.kind === "personal") : identities;
+  const defaultIdentityId = idChoices.find((i) => i.isDefault)?.id ?? idChoices[0]?.id ?? "main";
   const [identityId, setIdentityId] = useState(defaultIdentityId);
-  const safeIdentityId = identities.some((i) => i.id === identityId) ? identityId : defaultIdentityId;
-  const currentIdentity = identities.find((i) => i.id === safeIdentityId);
+  const safeIdentityId = idChoices.some((i) => i.id === identityId) ? identityId : defaultIdentityId;
+  const currentIdentity = idChoices.find((i) => i.id === safeIdentityId);
   const isMainIdentity = currentIdentity ? currentIdentity.isDefault : true;
+  const isPageIdentity = currentIdentity?.kind === "page";
+  const ownerOf = (id: string) => idChoices.find((i) => i.id === id)?.groupOwnerId ?? id;
+  const groupOwner = ownerOf(safeIdentityId);
 
-  // 各身分的社團清單是分開的（各帳號加入的社團不一樣）：只顯示、只送出「這個身分」的社團
-  const visibleGroups = useMemo(() => groups.filter((g) => g.identityId === safeIdentityId), [groups, safeIdentityId]);
+  // 各身分的社團清單是分開的（各帳號加入的社團不一樣）：只顯示、只送出「這個身分（粉專＝它借的個人帳號）」的社團
+  const visibleGroups = useMemo(() => groups.filter((g) => g.identityId === groupOwner), [groups, groupOwner]);
   const [picked, setPicked] = useState<Set<string>>(
-    () => new Set(groups.filter((g) => g.identityId === defaultIdentityId && !g.cooling).map((g) => g.id)),
+    () => new Set(groups.filter((g) => g.identityId === ownerOf(defaultIdentityId) && !g.cooling).map((g) => g.id)),
   );
 
   const chosen = useMemo(() => visibleGroups.filter((g) => picked.has(g.id)), [visibleGroups, picked]);
@@ -100,11 +116,9 @@ export function ScheduleForm({
   const pickIdentity = (id: string) => {
     setIdentityId(id);
     // 換身分＝換一份社團清單，預設值重算（冷卻中的不勾）；上一個身分勾的不會帶過來
-    setPicked(new Set(groups.filter((g) => g.identityId === id && !g.cooling).map((g) => g.id)));
-    if (id !== defaultIdentityId) {
-      setShareIg(false);
-      setShareThreads(false);
-    }
+    setPicked(new Set(groups.filter((g) => g.identityId === ownerOf(id) && !g.cooling).map((g) => g.id)));
+    // 以粉專身分只發社團，粉專自己的動態走下面的官方 API
+    if (idChoices.find((i) => i.id === id)?.kind === "page") setTimeline(false);
   };
 
   const toggle = (id: string) =>
@@ -124,13 +138,12 @@ export function ScheduleForm({
         draftId: safeDraftId,
         channel,
         runAt,
-        postToTimeline: timeline,
+        postToTimeline: timeline && !isPageIdentity,
         groupIds: [...picked].filter((id) => visibleIds.has(id)),
         autoPublish,
         runNow,
         crosspost: mpCrosspost,
-        shareIg: !marketplaceOnly && isMainIdentity && shareIg,
-        shareThreads: !marketplaceOnly && isMainIdentity && shareThreads,
+        apiIdentityIds: marketplaceOnly ? [] : apiAccounts.filter((a) => a.ready && apiPicked.has(a.id)).map((a) => a.id),
         identityId: safeIdentityId,
       });
       setMsg(res.ok ? { tone: "ok", text: res.message || "排好了" } : { tone: "bad", text: res.error || "排程失敗" });
@@ -233,7 +246,7 @@ export function ScheduleForm({
         <label className={styles.label} style={{ color: CIS.textSub }}>
           用哪個身分發
         </label>
-        {identities.length === 0 ? (
+        {idChoices.length === 0 ? (
           <div style={{ fontSize: 13, color: CIS.textMute }}>
             還沒有發文身分，請到{" "}
             <Link href="/admin/fb/identities" style={{ color: CIS.blueSoft }}>
@@ -243,7 +256,7 @@ export function ScheduleForm({
           </div>
         ) : (
           <div className={styles.checkGrid}>
-            {identities.map((i) => {
+            {idChoices.map((i) => {
               const on = i.id === safeIdentityId;
               const loginOk = i.loginState === "ok";
               return (
@@ -255,7 +268,9 @@ export function ScheduleForm({
                   <input type="radio" name="fb-identity" checked={on} onChange={() => pickIdentity(i.id)} />
                   <span style={{ minWidth: 0 }}>
                     <strong>{i.name}</strong>
-                    <span style={{ color: CIS.textMute, fontSize: 12 }}>{i.isDefault ? "　主帳號" : "　個人帳號"}</span>
+                    <span style={{ color: CIS.textMute, fontSize: 12 }}>
+                      {i.isDefault ? "　主帳號" : i.kind === "page" ? `　粉專（用「${i.viaName}」切換）` : "　個人帳號"}
+                    </span>
                     <div style={{ fontSize: 12, color: loginOk || i.isDefault ? CIS.textMute : "#b45309", marginTop: 2 }}>
                       {i.isDefault && i.loginState === "unknown" ? "原本的帳號" : i.loginLabel}
                     </div>
@@ -270,7 +285,7 @@ export function ScheduleForm({
           <Link href="/admin/fb/identities" style={{ color: CIS.blueSoft }}>
             發文身分
           </Link>
-          。換身分時下面的社團清單會跟著換成那個帳號的社團。
+          。換身分時下面的社團清單會跟著換成那個帳號的社團；粉專身分用的是它借的那個個人帳號的社團清單（粉專自己也要加入那些社團才發得出去）。
         </div>
       </div>
 
@@ -284,72 +299,73 @@ export function ScheduleForm({
               className={styles.checkBox}
               style={{ background: CIS.bgSoft, border: `1px solid ${timeline ? "rgba(90,145,225,0.4)" : CIS.cardBorder}` }}
             >
-              <input type="checkbox" checked={timeline} onChange={(e) => setTimeline(e.target.checked)} />
+              <input type="checkbox" checked={timeline && !isPageIdentity} disabled={isPageIdentity} onChange={(e) => setTimeline(e.target.checked)} />
               <span>
                 <strong>{isMainIdentity ? "貼在自己的 FB 動態" : `貼在「${currentIdentity?.name}」的 FB 動態`}</strong>
                 <div style={{ fontSize: 12, color: CIS.textMute, marginTop: 2 }}>
-                  先貼自己的牆，社團的人點進來才看得到
+                  {isPageIdentity
+                    ? "以粉專身分只發社團；粉專自己的動態請勾下面「同時發到」的粉專（官方 API，比開瀏覽器安全）"
+                    : "先貼自己的牆，社團的人點進來才看得到"}
                 </div>
               </span>
             </label>
           </div>
 
-          {/* IG／Threads（2026-09-21）：同一份工作多兩個目標，到點 runner 先用官方 API 發這兩個、再開瀏覽器跑 FB */}
+          {/* 同時發到（2026-10-09）：每一組粉專動態／IG／Threads 帳號一個勾選框，自由勾。到點 runner 先用官方 API 發、再開瀏覽器跑 FB */}
           <div className={styles.field} style={{ marginTop: 14 }}>
             <label className={styles.label} style={{ color: CIS.textSub }}>
-              同時分享到（官方 API，不開瀏覽器）
+              同時發到（官方 API，不開瀏覽器，可以勾好幾個）
             </label>
-            <div className={styles.checkGrid}>
-              {(
-                [
-                  { key: "ig", label: "Instagram", on: shareIg, set: setShareIg, opt: social?.ig, hint: "輪播最多 10 張、只吃 JPEG（Cloudinary 照片會自動轉）；一定要有照片" },
-                  { key: "threads", label: "Threads", on: shareThreads, set: setShareThreads, opt: social?.threads, hint: "內文 500 字內（貼文庫那則的 Threads 分頁可改）；可以純文字" },
-                ] as const
-              ).map((p) => {
-                // IG／Threads 是整個系統只連一組的官方 API 帳號，只跟主帳號綁在一起（其他身分不能勾）
-                const connected = Boolean(p.opt?.connected) && isMainIdentity;
-                return (
-                  <label
-                    key={p.key}
-                    className={styles.checkBox}
-                    style={{
-                      background: CIS.bgSoft,
-                      border: `1px solid ${p.on ? "rgba(90,145,225,0.4)" : CIS.cardBorder}`,
-                      opacity: connected ? 1 : 0.6,
-                      cursor: connected ? "pointer" : "not-allowed",
-                    }}
-                  >
-                    <input type="checkbox" checked={p.on} disabled={!connected} onChange={(e) => p.set(e.target.checked)} />
-                    <span style={{ minWidth: 0 }}>
-                      <strong>{p.label}</strong>
-                      <span style={{ color: CIS.textMute, fontSize: 12 }}>
-                        {connected ? `　@${p.opt?.username || "已連結"}` : ""}
+            {apiAccounts.length === 0 ? (
+              <div style={{ fontSize: 13, color: CIS.textMute }}>
+                還沒連結任何粉專／IG／Threads 帳號 →{" "}
+                <Link href="/admin/fb/identities" style={{ color: CIS.blueSoft }}>
+                  發文身分
+                </Link>
+              </div>
+            ) : (
+              <div className={styles.checkGrid}>
+                {apiAccounts.map((p) => {
+                  const on = apiPicked.has(p.id);
+                  const label = p.kind === "page" ? "粉專動態" : p.kind === "ig" ? "Instagram" : "Threads";
+                  const hint =
+                    p.kind === "page"
+                      ? "內文＝一般貼文；照片最多 10 張"
+                      : p.kind === "ig"
+                        ? "內文＝貼文庫那則的 Instagram 分頁；一定要有照片、最多 10 張"
+                        : "內文＝貼文庫那則的 Threads 分頁（500 字內）；可以純文字";
+                  return (
+                    <label
+                      key={p.id}
+                      className={styles.checkBox}
+                      style={{
+                        background: CIS.bgSoft,
+                        border: `1px solid ${on ? "rgba(90,145,225,0.4)" : CIS.cardBorder}`,
+                        opacity: p.ready ? 1 : 0.6,
+                        cursor: p.ready ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      <input type="checkbox" checked={on && p.ready} disabled={!p.ready} onChange={() => toggleApi(p.id)} />
+                      <span style={{ minWidth: 0 }}>
+                        <strong>{p.name}</strong>
+                        <span style={{ color: CIS.textMute, fontSize: 12 }}>
+                          　{label}
+                          {p.sub ? ` ${p.sub}` : ""}
+                        </span>
+                        <div style={{ fontSize: 12, color: p.ready ? CIS.textMute : "#b45309", marginTop: 2 }}>
+                          {p.ready ? hint : "授權鑰匙不見了，到「發文身分」頁重新連結"}
+                        </div>
                       </span>
-                      <div style={{ fontSize: 12, color: CIS.textMute, marginTop: 2 }}>
-                        {!isMainIdentity ? (
-                          "只能跟主帳號一起發（IG／Threads 只連了一組官方帳號，其他身分再勾會把同一篇發好幾遍）"
-                        ) : connected ? (
-                          p.hint
-                        ) : (
-                          <>
-                            還沒連結帳號 →{" "}
-                            <Link href="/admin/fb/social" style={{ color: CIS.blueSoft }}>
-                              IG／Threads 帳號
-                            </Link>
-                            {p.opt && !p.opt.appConfigured ? "（App ID／Secret 也還沒設）" : ""}
-                          </>
-                        )}
-                      </div>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className={styles.field} style={{ marginTop: 14 }}>
             <label className={styles.label} style={{ color: CIS.textSub }}>
-              {isMainIdentity ? "" : `「${currentIdentity?.name}」的`}社團（{visibleGroups.length} 個收這種文）—— 橘色的是距離上次貼太近，預設不勾
+              {isMainIdentity ? "" : isPageIdentity ? `以粉專「${currentIdentity?.name}」發到「${currentIdentity?.viaName}」的` : `「${currentIdentity?.name}」的`}社團（{visibleGroups.length} 個收這種文）—— 橘色的是距離上次貼太近，預設不勾
             </label>
             {visibleGroups.length === 0 ? (
               <div style={{ fontSize: 13, color: CIS.textMute }}>
@@ -358,7 +374,7 @@ export function ScheduleForm({
                 ) : (
                   <>
                     「{currentIdentity?.name}」還沒有啟用的社團。先到{" "}
-                    <Link href={`/admin/fb/groups?identity=${encodeURIComponent(safeIdentityId)}`} style={{ color: CIS.blueSoft }}>
+                    <Link href={`/admin/fb/groups?identity=${encodeURIComponent(groupOwner)}`} style={{ color: CIS.blueSoft }}>
                       這個身分的社團清單
                     </Link>{" "}
                     把它加入的社團抓進來、勾起來；只貼在自己動態的話可以不選社團。
@@ -488,7 +504,7 @@ export function ScheduleForm({
               type="button"
               className={styles.btn}
               style={{ background: CIS.blue, color: "#fff" }}
-              disabled={pending || (!timeline && chosen.length === 0 && !shareIg && !shareThreads)}
+              disabled={pending || ((!timeline || isPageIdentity) && chosen.length === 0 && ![...apiPicked].some((id) => apiAccounts.some((a) => a.id === id && a.ready)))}
               onClick={() => submit(false)}
             >
               <Icon name={pending ? "loading" : "calendar"} size={15} />
@@ -498,14 +514,14 @@ export function ScheduleForm({
               type="button"
               className={styles.btn}
               style={{ background: "rgba(15,23,42,0.06)", color: CIS.text, borderColor: CIS.cardBorder }}
-              disabled={pending || (!timeline && chosen.length === 0 && !shareIg && !shareThreads)}
+              disabled={pending || ((!timeline || isPageIdentity) && chosen.length === 0 && ![...apiPicked].some((id) => apiAccounts.some((a) => a.id === id && a.ready)))}
               onClick={() => submit(true)}
             >
               <Icon name={pending ? "loading" : "zap"} size={15} />
               立即發佈
             </button>
             <span style={{ fontSize: 13, color: CIS.textMute }}>
-              共 {(timeline ? 1 : 0) + chosen.length} 個地方
+              共 {(timeline && !isPageIdentity ? 1 : 0) + chosen.length + apiAccounts.filter((x) => x.ready && apiPicked.has(x.id)).length} 個地方
             </span>
           </div>
           <div style={{ marginTop: 8, fontSize: 12.5, color: CIS.textMute, lineHeight: 1.7 }}>

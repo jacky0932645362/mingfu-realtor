@@ -174,7 +174,7 @@ export default async function GroupsPage({
               </>
             ) : (
               <>
-                這是「{currentIdentity.name}」的社團清單。要抓（或重抓）：桌機雙擊 <code>FB抓社團-其他帳號.bat</code>，
+                這是「{currentIdentity.name}」的社團清單。要抓（或重抓）：桌機雙擊 <code>FB其他帳號-2抓社團.bat</code>，
                 登入代號輸入 <code>{currentIdentity.auth_key}</code>（要先登入過這個帳號，見「發文身分」頁）。
               </>
             )}

@@ -26,6 +26,8 @@ import path from "node:path";
 import {
   AUTH_FILE,
   FB_HOME,
+  switchToPage,
+  stillActingAsPage,
   SHOTS_DIR,
   MIN_GAP_MINUTES,
   MAX_PER_DAY,
@@ -257,6 +259,13 @@ const page = await context.newPage();
 
 const shot = (name) => page.screenshot({ path: path.join(SHOTS_DIR, `${stamp()}-${name}.png`) }).catch(() => {});
 
+/**
+ * 以粉專身分發社團（2026-10-09）：runner 帶 FB_ACT_AS_PAGE_ID 進來就要先切換成粉專、確認成功才發。
+ * 空字串＝一般個人帳號，什麼都不做。
+ */
+const ACT_AS_PAGE_ID = (process.env.FB_ACT_AS_PAGE_ID || "").trim();
+const ACT_AS_PAGE_URL = (process.env.FB_ACT_AS_PAGE_URL || "").trim();
+
 /** 這一輪掛了。記進檔案然後把整個流程停掉 —— 不要硬著頭皮往下發。 */
 class 發文失敗 extends Error {}
 const 失敗 = (msg) => {
@@ -291,6 +300,11 @@ async function 發到一個地方(目標) {
   console.log(`\n${"─".repeat(60)}`);
   console.log(`📍 ${名字}`);
   console.log("─".repeat(60));
+
+  // 以粉專身分：每一個社團開之前都確認還是粉專（FB 把切換清掉的話，接下來會變成用借用的個人帳號發——停下來）
+  if (ACT_AS_PAGE_ID && !(await stillActingAsPage(context, ACT_AS_PAGE_ID))) {
+    失敗("粉專身分在發文途中不見了（FB 把切換清掉），為了不用個人帳號發出去，這一輪停下來");
+  }
 
   await page.goto(是社團 ? 目標 : FB_HOME, { waitUntil: "domcontentloaded" });
   await humanDelay(2500, 3800);
@@ -531,6 +545,14 @@ let 成功幾個 = 0;
 let 跳過幾個 = 0;
 
 try {
+  if (ACT_AS_PAGE_ID) {
+    // 🔴 以粉專身分只發社團。工作裡如果有「個人主頁」（借用帳號自己的動態）就整份不發，免得發到錯的牆上
+    if (待發.some((t) => t === 個人主頁)) 失敗("以粉專身分只發社團，這份工作裡有「個人主頁」目標，整份不發");
+    console.log(`\n🔄 切換成粉專身分（${ACT_AS_PAGE_URL || ACT_AS_PAGE_ID}）…`);
+    const sw = await switchToPage(context, page, { pageId: ACT_AS_PAGE_ID, pageUrl: ACT_AS_PAGE_URL, home: FB_HOME });
+    if (!sw.ok) 失敗(sw.reason);
+    console.log(`  ✓ 已確認現在是粉專身分（${sw.finalUrl}）`);
+  }
   for (const [i, 目標] of 待發.entries()) {
     // 兩個目標之間要隔開。同一篇文短時間灌到一堆社團，是最容易被盯上的行為。
     // （被跳過的社團沒有真的發文，所以不算在間隔裡）

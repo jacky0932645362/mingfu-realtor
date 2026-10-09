@@ -10,6 +10,8 @@ import {
   renameIdentity,
   setIdentityActive,
   deleteIdentity,
+  setPageParent,
+  setIdentityNote,
 } from "@/lib/fb-identity";
 
 type Result = { ok: boolean; error?: string; id?: string; authKey?: string | null; message?: string };
@@ -22,11 +24,11 @@ async function guard(): Promise<string | null> {
   return (await isCurrentUserAdmin()) ? null : "權限不足";
 }
 
-export async function createIdentityAction(name: string): Promise<Result> {
+export async function createIdentityAction(name: string, note?: string): Promise<Result> {
   const denied = await guard();
   if (denied) return { ok: false, error: denied };
   try {
-    const r = await createPersonalIdentity(name);
+    const r = await createPersonalIdentity(name, note);
     if (r.ok) revalidateAll();
     return r.ok
       ? { ok: true, id: r.id, authKey: r.authKey ?? null, message: "已新增。接著照卡片上的步驟，到桌機登入這個帳號一次" }
@@ -69,5 +71,32 @@ export async function deleteIdentityAction(id: string): Promise<Result> {
     return r.ok ? { ok: true, message: "已刪除" } : { ok: false, error: r.error };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "刪除失敗" };
+  }
+}
+
+/** 粉專「以粉專身分發到社團」要借哪個個人帳號（2026-10-09）。空字串＝不發社團、只發粉專動態。 */
+export async function setPageParentAction(pageIdentityId: string, parentId: string): Promise<Result> {
+  const denied = await guard();
+  if (denied) return { ok: false, error: denied };
+  try {
+    const r = await setPageParent(pageIdentityId, parentId || null);
+    if (r.ok) revalidateAll();
+    return r.ok
+      ? { ok: true, message: parentId ? "已設定。先用桌機「檢查粉專身分」確認切換得過去，再排社團" : "已改成只發粉專動態" }
+      : { ok: false, error: r.error };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "設定失敗" };
+  }
+}
+
+export async function setIdentityNoteAction(id: string, note: string): Promise<Result> {
+  const denied = await guard();
+  if (denied) return { ok: false, error: denied };
+  try {
+    const r = await setIdentityNote(id, note);
+    if (r.ok) revalidateAll();
+    return r.ok ? { ok: true, message: "備註已存" } : { ok: false, error: r.error };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "存不了" };
   }
 }

@@ -4,7 +4,9 @@
  *
  * 一個「發文身分」＝ 一個能發文的主體：
  *   personal  個人帳號：桌機各存一份登入檔（auth/fb-state[-代號].json），用 Playwright 開瀏覽器發。
- *   page      粉絲專頁：（第二段才做）走官方 API，不開瀏覽器。
+ *   page      粉絲專頁：①發到粉專自己的動態＝官方 API（不開瀏覽器）②以粉專身分發到社團＝
+ *             用「管理它的個人帳號」的登入檔開瀏覽器，切換成粉專身分再發（2026-10-09 第二段）。
+ *   ig／threads  Instagram／Threads 帳號：官方 API，可以連好幾組（2026-10-09）。
  *
  * 🔴 原本就有的那個帳號 ＝ 「主帳號」，代號固定 "main"。fb_task／fb_group／fb_delete_task 的
  *    identity_id 欄位**主帳號一律存 NULL**（舊資料本來就是 NULL，兩種寫法不會並存），
@@ -14,12 +16,76 @@
 export const IDENTITY_KINDS = [
   { key: "personal", label: "個人帳號" },
   { key: "page", label: "粉絲專頁" },
+  { key: "ig", label: "Instagram" },
+  { key: "threads", label: "Threads" },
 ] as const;
 
-export type IdentityKind = "personal" | "page";
+export type IdentityKind = "personal" | "page" | "ig" | "threads";
 
 export function isIdentityKind(v: unknown): v is IdentityKind {
-  return v === "personal" || v === "page";
+  return v === "personal" || v === "page" || v === "ig" || v === "threads";
+}
+
+/**
+ * 排程裡「走官方 API」的目標（fb_task_item.channel）：粉專動態／IG／Threads。
+ * 每一個目標都要指定是哪一個身分（fb_task_item.target_identity_id）。
+ */
+export const API_CHANNELS = ["page", "ig", "threads"] as const;
+export type ApiChannel = (typeof API_CHANNELS)[number];
+
+export function isApiChannel(v: unknown): v is ApiChannel {
+  return v === "page" || v === "ig" || v === "threads";
+}
+
+export function apiChannelLabel(c: string): string {
+  return c === "page" ? "粉專動態" : c === "ig" ? "Instagram" : c === "threads" ? "Threads" : c;
+}
+
+/**
+ * 「以粉專身分發到社團」切換之後，桌機打開 facebook.com/me 會被轉到「現在是誰」的個人檔案網址。
+ * 這支判斷轉過去的網址是不是那個粉專——是才准發。比不出來一律當「不是」（寧可不發，不能用錯身分發）。
+ *   finalUrl  打開 /me 之後瀏覽器停在的網址
+ *   pageId    粉專的數字編號（官方 API 拿到的）
+ *   pageUrl   粉專的網址（官方 API 回的 link，可能是 /profile.php?id=… 或 /自訂名稱）
+ */
+export function isActingAsPage(finalUrl: string, pageId: string | null | undefined, pageUrl?: string | null): boolean {
+  let u: URL;
+  try {
+    u = new URL(finalUrl);
+  } catch {
+    return false;
+  }
+  if (!/(^|\.)facebook\.com$/i.test(u.hostname)) return false;
+  const id = String(pageId || "").trim();
+  if (id && /^\d+$/.test(id)) {
+    if (u.searchParams.get("id") === id) return true;
+    if (u.pathname.split("/").filter(Boolean).includes(id)) return true;
+  }
+  const slug = pageSlugFromUrl(pageUrl);
+  if (slug) {
+    let first = u.pathname.split("/").filter(Boolean)[0] || "";
+    try {
+      first = decodeURIComponent(first);
+    } catch {
+      /* 網址編碼壞掉就照原字比 */
+    }
+    if (first.toLowerCase() === slug.toLowerCase()) return true;
+  }
+  return false;
+}
+
+/** 粉專網址的自訂名稱（facebook.com/房仲蕭邦 → "房仲蕭邦"）；profile.php 這種沒有自訂名稱的回 null。 */
+export function pageSlugFromUrl(pageUrl: string | null | undefined): string | null {
+  if (!pageUrl) return null;
+  try {
+    const u = new URL(pageUrl);
+    if (!/(^|\.)facebook\.com$/i.test(u.hostname)) return null;
+    const first = decodeURIComponent(u.pathname.split("/").filter(Boolean)[0] || "");
+    if (!first || /^(profile\.php|pages|people|groups|me)$/i.test(first)) return null;
+    return first;
+  } catch {
+    return null;
+  }
 }
 
 export function identityKindLabel(kind: string): string {

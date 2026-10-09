@@ -32,3 +32,6 @@ config/group-survey.json
 config/*-debug.json
 # 誤建的空檔
 /1
+
+# 2026-10-09 其他發文身分抓下來的社團清單（有社團名稱，留在本機）
+config/groups-*.json

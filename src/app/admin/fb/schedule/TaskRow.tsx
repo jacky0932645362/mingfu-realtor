@@ -32,6 +32,8 @@ type Task = {
   groupCount: number;
   shareIg?: boolean;
   shareThreads?: boolean;
+  /** 2026-10-09：同時發幾個粉專動態（官方 API） */
+  sharePages?: number;
   progress: string;
   autoPublish: boolean;
   status: string;
@@ -79,6 +81,7 @@ export function TaskRow({ task }: { task: Task }) {
     task.timeline ? "自己的動態" : "",
     task.shareIg ? "Instagram" : "",
     task.shareThreads ? "Threads" : "",
+    task.sharePages ? `${task.sharePages} 個粉專動態` : "",
     task.groupCount > 0 ? `${task.groupCount} 個社團` : "",
   ]
     .filter(Boolean)

@@ -28,7 +28,8 @@ export type SocialDetailProps = {
   url: string | null;
   postedAtText: string | null;
   limit: number;
-  account: { connected: boolean; username: string | null; appConfigured: boolean };
+  /** 2026-10-09：這個平台連了哪幾組帳號（可以選要發哪一個） */
+  accounts: Array<{ id: string; name: string }>;
   photos: Array<{ url: string; ok: boolean; reason?: string }>;
 };
 
@@ -42,6 +43,9 @@ export function SocialDetail(p: SocialDetailProps) {
   const over = len > p.limit;
   const okPhotos = p.photos.filter((x) => x.ok);
   const needPhoto = p.platform === "ig" && okPhotos.length === 0;
+  const [accountId, setAccountId] = useState(p.accounts[0]?.id || "");
+  const account = p.accounts.find((a) => a.id === accountId) || p.accounts[0] || null;
+  const connected = Boolean(account);
 
   const save = () =>
     start(async () => {
@@ -62,9 +66,10 @@ export function SocialDetail(p: SocialDetailProps) {
 
   const publishNow = () => {
     if (dirty) return setMsg({ tone: "bad", text: "內文改了還沒存 —— 先按「儲存」再發" });
-    if (!confirm(`真的要現在發到 ${p.label}？這是公開發出去，會用 ${okPhotos.length} 張照片。`)) return;
+    if (!account) return;
+    if (!confirm(`真的要現在發到 ${p.label}「${account.name}」？這是公開發出去，會用 ${okPhotos.length} 張照片。`)) return;
     start(async () => {
-      const res = await publishSocialNowAction(p.draftId, p.platform);
+      const res = await publishSocialNowAction(p.draftId, p.platform, account.id);
       setMsg(res.ok ? { tone: "ok", text: res.message || "已發" } : { tone: "bad", text: res.error || "發文失敗" });
       if (res.ok) router.refresh();
     });
@@ -127,15 +132,15 @@ export function SocialDetail(p: SocialDetailProps) {
         ) : null}
       </div>
 
-      {!p.account.connected ? (
+      {!connected ? (
         <div className={styles.notice} style={{ background: "rgba(245,158,11,0.09)", border: "1px solid rgba(245,158,11,0.26)", color: CIS.textSub }}>
           <Icon name="warning" size={16} color="#b45309" className={styles.noticeIcon} />
           <div>
             {p.label} 還沒連結帳號，這裡可以先改文案，但發不出去。去{" "}
-            <Link href="/admin/fb/social" style={{ color: CIS.blueSoft }}>
-              IG／Threads 帳號
+            <Link href="/admin/fb/identities" style={{ color: CIS.blueSoft }}>
+              發文身分
             </Link>{" "}
-            連結{p.account.appConfigured ? "" : "（App ID／Secret 也還沒設）"}。
+            連結。
           </div>
         </div>
       ) : null}
@@ -212,15 +217,29 @@ export function SocialDetail(p: SocialDetailProps) {
       </section>
 
       <div className={styles.btnRow} style={{ marginTop: 20 }}>
+        {p.accounts.length > 1 ? (
+          <select
+            className={styles.select}
+            style={{ width: "auto", minWidth: 180, background: CIS.bgSoft, border: `1px solid ${CIS.cardBorder}`, color: CIS.text }}
+            value={account?.id || ""}
+            onChange={(e) => setAccountId(e.target.value)}
+          >
+            {p.accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <button
           type="button"
           className={styles.btn}
-          disabled={pending || !p.account.connected || over || needPhoto || !body.trim()}
+          disabled={pending || !connected || over || needPhoto || !body.trim()}
           onClick={publishNow}
-          style={{ background: p.account.connected && !over && !needPhoto ? "#e11d48" : "transparent", color: p.account.connected && !over && !needPhoto ? "#fff" : CIS.textMute, borderColor: "rgba(244,63,94,0.35)" }}
+          style={{ background: connected && !over && !needPhoto ? "#e11d48" : "transparent", color: connected && !over && !needPhoto ? "#fff" : CIS.textMute, borderColor: "rgba(244,63,94,0.35)" }}
         >
           <Icon name="send" size={15} />
-          現在就發到 {p.label}
+          現在就發到 {p.label}{account && p.accounts.length > 1 ? `「${account.name}」` : ""}
         </button>
         <Link
           href={`/admin/fb/schedule?draft=${p.draftId}&channel=post`}

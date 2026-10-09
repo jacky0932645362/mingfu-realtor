@@ -51,7 +51,7 @@ if (IDENTITY_KEY) {
 if (!authSessionStatus(AUTH_TARGET).有登入) {
   console.error(
     IDENTITY_KEY
-      ? `\n❌ 現在跑不了。發文身分「${IDENTITY_KEY}」還沒登入（或登入過期）。\n   先雙擊 FB登入-其他帳號.bat、輸入同一個登入代號登入那個帳號，再來抓社團。\n`
+      ? `\n❌ 現在跑不了。發文身分「${IDENTITY_KEY}」還沒登入（或登入過期）。\n   先雙擊 FB其他帳號-1登入.bat、輸入同一個登入代號登入那個帳號，再來抓社團。\n`
       : `\n❌ 現在跑不了。\n   ${登入問題說明()}\n`,
   );
   process.exit(1);

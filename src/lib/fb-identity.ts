@@ -38,6 +38,30 @@ export type FbIdentityRow = {
   sort_order: number;
   created_at: Date;
   updated_at: Date | null;
+  /**
+   * 2026-10-09 第二段（nullable）：
+   *   parent_identity_id  粉專「以粉專身分發到社團」要借哪個個人帳號的登入檔（那個帳號要是粉專管理員）。null＝這個粉專只發自己動態
+   *   ext_user_id         IG／Threads 的帳號編號（粉專的編號放 page_id）
+   *   ext_username        IG／Threads 的 @帳號名
+   */
+  parent_identity_id?: string | null;
+  ext_user_id?: string | null;
+  ext_username?: string | null;
+  /** 備註（本人自己寫的，例：主帳號、公司粉專） */
+  note?: string | null;
+};
+
+/**
+ * 官方 API 的鑰匙（粉專／IG／Threads）。🔴 刻意放在另一張表：fb_identity 那張會整列送到後台畫面，
+ * 鑰匙不能跟著出去。只有伺服器端（發文、續期）讀這張。
+ */
+export type IdentityTokenRow = {
+  identity_id: string;
+  access_token: string;
+  token_expires_at: Date | null;
+  scopes: string | null;
+  connected_at: Date;
+  refreshed_at: Date | null;
 };
 
 let ensured = false;
@@ -61,6 +85,30 @@ export async function ensureFbIdentityTable(): Promise<void> {
       created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at       DATETIME     NULL,
       PRIMARY KEY (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  for (const [name, def] of [
+    ["parent_identity_id", "VARCHAR(64) NULL"],
+    ["ext_user_id", "VARCHAR(64) NULL"],
+    ["ext_username", "VARCHAR(120) NULL"],
+    // 2026-10-09 本人要的表格版「備註」欄（例：主帳號、公司粉專）
+    ["note", "VARCHAR(200) NULL"],
+  ] as const) {
+    try {
+      await db.$executeRawUnsafe(`ALTER TABLE fb_identity ADD COLUMN IF NOT EXISTS ${name} ${def}`);
+    } catch {
+      // 舊版 MySQL 不吃 IF NOT EXISTS —— 欄位已存在時會丟，吞掉
+    }
+  }
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS fb_identity_token (
+      identity_id      VARCHAR(64)  NOT NULL,
+      access_token     TEXT         NOT NULL,
+      token_expires_at DATETIME     NULL,
+      scopes           VARCHAR(300) NULL,
+      connected_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      refreshed_at     DATETIME     NULL,
+      PRIMARY KEY (identity_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
   // 原本就有的那個帳號 ＝ 主帳號。ON DUPLICATE KEY：已經有就完全不動（不蓋掉本人改過的名字）。
@@ -99,7 +147,7 @@ export async function getDefaultIdentity(): Promise<FbIdentityRow> {
 export type IdentityResult = { ok: boolean; error?: string; id?: string; authKey?: string | null };
 
 /** 新增一個個人帳號身分。登入檔要之後在桌機用登入代號跑一次登入才有。 */
-export async function createPersonalIdentity(name: string): Promise<IdentityResult> {
+export async function createPersonalIdentity(name: string, note?: string): Promise<IdentityResult> {
   await ensureFbIdentityTable();
   const clean = name.trim().slice(0, 100);
   if (!clean) return { ok: false, error: "取個名字（例：房仲蕭邦第二帳號）" };
@@ -116,12 +164,13 @@ export async function createPersonalIdentity(name: string): Promise<IdentityResu
   const id = randomUUID().replace(/-/g, "");
   const order = existing.reduce((m, r) => Math.max(m, r.sort_order), 0) + 1;
   await db.$executeRawUnsafe(
-    `INSERT INTO fb_identity (id, kind, name, is_default, is_active, auth_key, sort_order)
-     VALUES (?, 'personal', ?, 0, 1, ?, ?)`,
+    `INSERT INTO fb_identity (id, kind, name, is_default, is_active, auth_key, sort_order, note)
+     VALUES (?, 'personal', ?, 0, 1, ?, ?, ?)`,
     id,
     clean,
     authKey,
     order,
+    (note || "").trim().slice(0, 200) || null,
   );
   return { ok: true, id, authKey };
 }
@@ -134,6 +183,18 @@ export async function renameIdentity(id: string, name: string): Promise<Identity
   if (all.some((r) => r.id !== id && r.name === clean)) return { ok: false, error: `已經有叫「${clean}」的身分了` };
   await db.$executeRawUnsafe("UPDATE fb_identity SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", clean, id);
   return { ok: true, id };
+}
+
+export async function setIdentityNote(id: string, note: string): Promise<IdentityResult> {
+  await ensureFbIdentityTable();
+  const row = await getIdentity(id);
+  if (!row) return { ok: false, error: "找不到這個身分" };
+  await db.$executeRawUnsafe(
+    "UPDATE fb_identity SET note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    note.trim().slice(0, 200) || null,
+    row.id,
+  );
+  return { ok: true, id: row.id };
 }
 
 /** 主帳號不能停用（沒有它整個系統就沒有預設身分可退）。 */
@@ -170,7 +231,16 @@ export async function deleteIdentity(id: string): Promise<IdentityResult> {
   const groupN = Number(String(groups[0]?.n ?? 0));
   if (taskN > 0) return { ok: false, error: `這個身分名下有 ${taskN} 筆排程／發文紀錄，刪掉歷史就對不上了——改用「停用」` };
   if (groupN > 0) return { ok: false, error: `這個身分名下有 ${groupN} 個社團，先到「社團清單」處理掉再刪，或改用「停用」` };
+  // 粉專／IG／Threads 的發文紀錄記在 fb_task_item.target_identity_id（欄位是 fb-factory 建的，還沒建過就當 0）
+  const apiN = await db
+    .$queryRawUnsafe<Array<{ n: unknown }>>("SELECT COUNT(*) AS n FROM fb_task_item WHERE target_identity_id = ?", row.id)
+    .then((r) => Number(String(r[0]?.n ?? 0)))
+    .catch(() => 0);
+  if (apiN > 0) return { ok: false, error: `這個身分有 ${apiN} 筆排程／發文紀錄，刪掉歷史就對不上了——改用「停用」` };
+  // 有粉專借這個個人帳號發社團的話，先解除（不然粉專會指到不存在的帳號）
+  await db.$executeRawUnsafe("UPDATE fb_identity SET parent_identity_id = NULL WHERE parent_identity_id = ?", row.id);
 
+  await db.$executeRawUnsafe("DELETE FROM fb_identity_token WHERE identity_id = ?", row.id);
   await db.$executeRawUnsafe("DELETE FROM fb_identity WHERE id = ?", row.id);
   return { ok: true, id: row.id };
 }
@@ -189,4 +259,121 @@ export async function reportIdentityLogin(id: string | null | undefined, ok: boo
 
 export function isPersonal(row: Pick<FbIdentityRow, "kind">): boolean {
   return isIdentityKind(row.kind) && (row.kind as IdentityKind) === "personal";
+}
+
+/* ────────────────── 官方 API 身分：粉專／IG／Threads（2026-10-09 第二段） ────────────────── */
+
+export type ApiIdentityKind = "page" | "ig" | "threads";
+
+/**
+ * 授權回來之後存身分＋鑰匙。同一個粉專／IG／Threads 帳號（用平台給的編號認）重新授權＝更新鑰匙，
+ * 不會多一列；本人改過的名字不蓋掉，只更新 @帳號名、粉專網址，並重新啟用。
+ */
+export async function upsertApiIdentity(data: {
+  kind: ApiIdentityKind;
+  extId: string;
+  name: string;
+  username?: string | null;
+  pageUrl?: string | null;
+  accessToken: string;
+  expiresAt: Date | null;
+  scopes: string[];
+}): Promise<{ id: string; created: boolean }> {
+  await ensureFbIdentityTable();
+  const extId = String(data.extId).trim();
+  if (!extId) throw new Error("平台沒回帳號編號");
+  const col = data.kind === "page" ? "page_id" : "ext_user_id";
+  const found = await db.$queryRawUnsafe<Array<{ id: string }>>(
+    `SELECT id FROM fb_identity WHERE kind = ? AND ${col} = ? LIMIT 1`,
+    data.kind,
+    extId,
+  );
+  let id = found[0]?.id;
+  const created = !id;
+  if (id) {
+    await db.$executeRawUnsafe(
+      `UPDATE fb_identity SET is_active = 1, ext_username = ?, page_url = COALESCE(?, page_url), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      data.username ?? null,
+      data.pageUrl ?? null,
+      id,
+    );
+  } else {
+    id = randomUUID().replace(/-/g, "");
+    const existing = await listIdentities();
+    const order = existing.reduce((m, r) => Math.max(m, r.sort_order), 0) + 1;
+    // 名字撞到既有身分就在後面加平台，免得畫面上兩個一模一樣分不出來
+    let name = (data.name || data.username || extId).trim().slice(0, 90);
+    if (existing.some((r) => r.name === name)) name = `${name}（${data.kind === "page" ? "粉專" : data.kind === "ig" ? "IG" : "Threads"}）`;
+    await db.$executeRawUnsafe(
+      `INSERT INTO fb_identity (id, kind, name, is_default, is_active, page_id, page_url, ext_user_id, ext_username, sort_order)
+       VALUES (?, ?, ?, 0, 1, ?, ?, ?, ?, ?)`,
+      id,
+      data.kind,
+      name,
+      data.kind === "page" ? extId : null,
+      data.pageUrl ?? null,
+      data.kind === "page" ? null : extId,
+      data.username ?? null,
+      order,
+    );
+  }
+  await db.$executeRawUnsafe(
+    `INSERT INTO fb_identity_token (identity_id, access_token, token_expires_at, scopes, connected_at, refreshed_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, NULL)
+     ON DUPLICATE KEY UPDATE access_token = VALUES(access_token), token_expires_at = VALUES(token_expires_at),
+       scopes = VALUES(scopes), connected_at = CURRENT_TIMESTAMP, refreshed_at = NULL`,
+    id,
+    data.accessToken,
+    data.expiresAt,
+    data.scopes.join(",").slice(0, 300),
+  );
+  return { id, created };
+}
+
+/** 伺服器端專用：拿某個身分的官方 API 鑰匙。沒有回 null。 */
+export async function getIdentityToken(id: string): Promise<IdentityTokenRow | null> {
+  await ensureFbIdentityTable();
+  const rows = await db.$queryRawUnsafe<IdentityTokenRow[]>("SELECT * FROM fb_identity_token WHERE identity_id = ? LIMIT 1", id);
+  return rows[0] || null;
+}
+
+export async function updateIdentityToken(id: string, accessToken: string, expiresAt: Date | null): Promise<void> {
+  await ensureFbIdentityTable();
+  await db.$executeRawUnsafe(
+    "UPDATE fb_identity_token SET access_token = ?, token_expires_at = ?, refreshed_at = CURRENT_TIMESTAMP WHERE identity_id = ?",
+    accessToken,
+    expiresAt,
+    id,
+  );
+}
+
+/** 給畫面看的鑰匙狀態（不含鑰匙本體）。 */
+export async function identityTokenStatus(): Promise<Map<string, { expiresAt: Date | null; connectedAt: Date; refreshedAt: Date | null }>> {
+  await ensureFbIdentityTable();
+  const rows = await db.$queryRawUnsafe<Array<{ identity_id: string; token_expires_at: Date | null; connected_at: Date; refreshed_at: Date | null }>>(
+    "SELECT identity_id, token_expires_at, connected_at, refreshed_at FROM fb_identity_token",
+  );
+  return new Map(rows.map((r) => [r.identity_id, { expiresAt: r.token_expires_at, connectedAt: r.connected_at, refreshedAt: r.refreshed_at }]));
+}
+
+/**
+ * 粉專「以粉專身分發到社團」要借哪個個人帳號的登入檔。傳 null＝不發社團（只發粉專動態）。
+ * 🔴 只准指到「個人帳號、啟用中」；那個帳號是不是真的是粉專管理員，網站驗不到，要桌機實測（見「檢查粉專身分」批次檔）。
+ */
+export async function setPageParent(pageIdentityId: string, parentId: string | null): Promise<IdentityResult> {
+  await ensureFbIdentityTable();
+  const page = await getIdentity(pageIdentityId);
+  if (!page || page.kind !== "page") return { ok: false, error: "找不到這個粉專身分" };
+  if (parentId) {
+    const parent = await getIdentity(parentId);
+    if (!parent || parent.kind !== "personal") return { ok: false, error: "只能選個人帳號" };
+    if (parent.is_active !== 1) return { ok: false, error: `「${parent.name}」已停用` };
+  }
+  await db.$executeRawUnsafe(
+    // 換了借用的帳號＝上一次「粉專身分檢查」的結果不算數了，清掉讓畫面顯示「還沒檢查」
+    "UPDATE fb_identity SET parent_identity_id = ?, login_ok = NULL, login_checked_at = NULL, login_note = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    parentId ? parentId : null,
+    page.id,
+  );
+  return { ok: true, id: page.id };
 }

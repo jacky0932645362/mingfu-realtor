@@ -234,6 +234,82 @@ export function authFileForIdentity(authKey) {
   return path.join(path.dirname(AUTH_FILE), `fb-state-${authKey}.json`);
 }
 
+/* ────────────────── 以粉專身分發社團（2026-10-09） ────────────────── */
+
+/**
+ * 切換成粉專身分＝在借用的個人帳號登入上加一個 cookie `i_user`＝粉專編號（FB 新版粉專「切換個人檔案」用的就是它）。
+ * 切換有沒有成功不靠猜：打開 /me，FB 會把人轉到「現在是誰」的個人檔案網址，比對是不是那個粉專才准發。
+ * 規則要跟 src/lib/fb-identity-core.ts 的 isActingAsPage／pageSlugFromUrl 一致（test-identity.mjs 會對照）。
+ */
+export const ACT_AS_PAGE_COOKIE = "i_user";
+
+export function pageSlugFromUrl(pageUrl) {
+  if (!pageUrl) return null;
+  try {
+    const u = new URL(pageUrl);
+    if (!/(^|\.)facebook\.com$/i.test(u.hostname)) return null;
+    const first = decodeURIComponent(u.pathname.split("/").filter(Boolean)[0] || "");
+    if (!first || /^(profile\.php|pages|people|groups|me)$/i.test(first)) return null;
+    return first;
+  } catch {
+    return null;
+  }
+}
+
+export function isActingAsPage(finalUrl, pageId, pageUrl) {
+  let u;
+  try {
+    u = new URL(finalUrl);
+  } catch {
+    return false;
+  }
+  if (!/(^|\.)facebook\.com$/i.test(u.hostname)) return false;
+  const id = String(pageId || "").trim();
+  if (id && /^\d+$/.test(id)) {
+    if (u.searchParams.get("id") === id) return true;
+    if (u.pathname.split("/").filter(Boolean).includes(id)) return true;
+  }
+  const slug = pageSlugFromUrl(pageUrl);
+  if (slug) {
+    let first = u.pathname.split("/").filter(Boolean)[0] || "";
+    try {
+      first = decodeURIComponent(first);
+    } catch {
+      /* 照原字比 */
+    }
+    if (first.toLowerCase() === slug.toLowerCase()) return true;
+  }
+  return false;
+}
+
+/**
+ * 在一個 Playwright context 上切換成粉專、打開 /me 確認。回 { ok, finalUrl, reason }。
+ * 🔴 確認不了一律 ok:false——呼叫端要整份不發（寧可不發，不能用借用的個人帳號發出去）。
+ */
+export async function switchToPage(context, page, { pageId, pageUrl, home = "https://www.facebook.com/" }) {
+  const id = String(pageId || "").trim();
+  if (!/^\d+$/.test(id)) return { ok: false, finalUrl: "", reason: `粉專編號不對（${id || "空的"}）` };
+  await context.addCookies([
+    { name: ACT_AS_PAGE_COOKIE, value: id, domain: ".facebook.com", path: "/", secure: true, sameSite: "None" },
+  ]);
+  const meUrl = new URL("/me", home).href;
+  await page.goto(meUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3000);
+  const finalUrl = page.url();
+  if (isActingAsPage(finalUrl, id, pageUrl)) return { ok: true, finalUrl, reason: "" };
+  return {
+    ok: false,
+    finalUrl,
+    reason: `切換成粉專之後打開「我的個人檔案」停在 ${finalUrl}，不是這個粉專（${pageUrl || id}）——這個帳號可能不是粉專管理員，或 FB 改了切換方式`,
+  };
+}
+
+/** 發文途中確認還是粉專身分（cookie 被 FB 清掉的話就停）。 */
+export async function stillActingAsPage(context, pageId) {
+  const cookies = await context.cookies("https://www.facebook.com/");
+  return cookies.some((c) => c.name === ACT_AS_PAGE_COOKIE && c.value === String(pageId));
+}
+
 /**
  * 🔴 版本錯位保險（2026-10-07）：後台 API 回的 identity，要跟資料庫裡那份工作實際指定的身分一致。
  * 後台還沒更新（舊版）時 claim 不會回 identity，runner 會把「沒有身分」當成主帳號——但資料庫裡這份工作

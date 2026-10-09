@@ -289,7 +289,8 @@ console.log("⑦ 刪文工作走社團「你的內容」路徑（假頁面）…
     const { 收到, out } = await 用假後台跑(null, ["--once", "--headless"], 刪文隔離, 刪文工作(true));
     const actions = 收到.map((x) => x.action);
     const fin = 收到.find((x) => x.action === "finish-delete");
-    ok("⑦b 有收尾", !!fin, actions.join(","));
+    // 沒收尾時把 runner 輸出尾段印出來（2026-10-09：不然只看得到 claim,claim-delete，不知道卡在哪）
+    ok("⑦b 有收尾", !!fin, `${actions.join(",")} ｜ 輸出尾段：${out.slice(-900)}`);
     ok("⑦b 刪了 2 篇", fin?.deletedCount === 2, JSON.stringify(fin));
     ok("⑦b 回報的 items 有 2 筆、都帶社團", (() => { try { const it = JSON.parse(fin?.resultJson || "[]"); return it.length === 2 && it.every((i) => i.group); } catch { return false; } })(), fin?.resultJson);
     ok("⑦b 備註寫刪了幾篇", (fin?.note || "").includes("刪了 2 篇"), fin?.note);
@@ -331,7 +332,7 @@ console.log("⑧ 發文身分：各用各的登入檔、絕不退回主帳號…
     ok("⑧a 失敗原因給出登入代號", (fail?.error || "").includes("acct-t3st"), fail?.error);
     ok("⑧a 🔴 沒有退回主帳號去發（沒回報任何發送）", !actions.includes("report") && !actions.includes("finish"), actions.join(","));
     ok("⑧a 🔴 沒有去跑 post.mjs", !out.includes("▶ post.mjs"), out.slice(0, 300));
-    ok("⑧a 指路到 FB登入-其他帳號.bat", out.includes("FB登入-其他帳號.bat"), out.slice(0, 300));
+    ok("⑧a 指路到 FB其他帳號-1登入.bat", out.includes("FB其他帳號-1登入.bat"), out.slice(0, 300));
   }
 
   // 8b：第二個身分有登入檔、主帳號的檔不存在 → 成功才代表真的用了第二個身分自己的檔
@@ -351,7 +352,7 @@ console.log("⑧ 發文身分：各用各的登入檔、絕不退回主帳號…
     const { 收到, out } = await 用假後台跑(工作(null), ["--once", "--headless"], 主不存在);
     const actions = 收到.map((x) => x.action);
     ok("⑧c 沒有身分＝主帳號，主帳號沒登入檔 → 失敗", actions.includes("fail") && !actions.includes("report"), actions.join(","));
-    ok("⑧c 失敗講的是主帳號那套（不是其他身分的）", !out.includes("FB登入-其他帳號.bat"), out.slice(0, 300));
+    ok("⑧c 失敗講的是主帳號那套（不是其他身分的）", !out.includes("FB其他帳號-1登入.bat"), out.slice(0, 300));
   }
 
   // 8d：登入代號不合法（路徑穿越）→ 失敗，不去拼檔名

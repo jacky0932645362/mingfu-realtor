@@ -38,11 +38,26 @@ import { getProperty } from "@/lib/property";
 import { directImageUrl, parseImageList } from "@/lib/media-url";
 import { getIdentity, listIdentities, reportIdentityLogin, type FbIdentityRow } from "@/lib/fb-identity";
 import { identityIdForDisplay } from "@/lib/fb-identity-core";
+import { isApiItem } from "@/lib/fb-factory";
 
 export const dynamic = "force-dynamic";
 
-/** 給 runner 的身分資料。登入檔路徑不在這裡（網站不知道桌機上的檔案），runner 用 authKey 自己組。 */
-function identityPayload(row: FbIdentityRow) {
+/**
+ * 給 runner 的身分資料。登入檔路徑不在這裡（網站不知道桌機上的檔案），runner 用 authKey 自己組。
+ * 粉專（以粉專身分發到社團，2026-10-09）：authKey 是「管理它的那個個人帳號」的，另外帶 actAsPage——
+ * runner 交給 post.mjs，切換成粉專身分並確認切換成功才發。
+ */
+function identityPayload(row: FbIdentityRow, parent?: FbIdentityRow | null) {
+  if (row.kind === "page" && parent) {
+    return {
+      id: identityIdForDisplay(row.id),
+      kind: row.kind,
+      name: row.name,
+      authKey: parent.auth_key,
+      viaName: parent.name,
+      actAsPage: { pageId: row.page_id, pageUrl: row.page_url },
+    };
+  }
   return { id: identityIdForDisplay(row.id), kind: row.kind, name: row.name, authKey: row.auth_key };
 }
 
@@ -50,14 +65,25 @@ function identityPayload(row: FbIdentityRow) {
  * 這個任務的身分能不能發。不能發（身分被停用、被刪、是還沒支援的粉絲專頁）回一句原因，
  * 呼叫端把任務標失敗——**絕對不退回主帳號去發**：拿錯帳號發文是這個功能最不能發生的事。
  */
-async function resolveIdentityForTask(identityId: string | null | undefined): Promise<
-  { ok: true; identity: FbIdentityRow } | { ok: false; reason: string }
-> {
+async function resolveIdentityForTask(
+  identityId: string | null | undefined,
+  opts: { allowPage?: boolean } = {},
+): Promise<{ ok: true; identity: FbIdentityRow; parent: FbIdentityRow | null } | { ok: false; reason: string }> {
   const identity = await getIdentity(identityId);
   if (!identity) return { ok: false, reason: `發文身分已經被刪掉了（${identityId}），這筆沒發` };
   if (identity.is_active !== 1) return { ok: false, reason: `發文身分「${identity.name}」已停用，這筆沒發（要發就去「發文身分」頁重新啟用）` };
-  if (identity.kind !== "personal") return { ok: false, reason: `發文身分「${identity.name}」是${identity.kind === "page" ? "粉絲專頁，粉專發文還沒支援" : "不支援的類型"}，這筆沒發` };
-  return { ok: true, identity };
+  if (identity.kind === "page" && opts.allowPage) {
+    // 以粉專身分發到社團：一定要有「管理它的個人帳號」，而且那個帳號要啟用中；粉專編號一定要有（切換身分要用）
+    if (!identity.page_id) return { ok: false, reason: `粉專「${identity.name}」沒有粉專編號，重新連結一次粉專再排` };
+    if (!identity.parent_identity_id) return { ok: false, reason: `粉專「${identity.name}」還沒設定「用哪個個人帳號切換發社團」，這筆沒發` };
+    const parent = await getIdentity(identity.parent_identity_id);
+    if (!parent || parent.kind !== "personal" || parent.is_active !== 1) {
+      return { ok: false, reason: `粉專「${identity.name}」設定的個人帳號不存在或已停用，這筆沒發` };
+    }
+    return { ok: true, identity, parent };
+  }
+  if (identity.kind !== "personal") return { ok: false, reason: `發文身分「${identity.name}」不是個人帳號，這條路發不了，這筆沒發` };
+  return { ok: true, identity, parent: null };
 }
 
 function checkAuth(req: Request): string | null {
@@ -108,8 +134,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, task: null, note: "文案不存在，工作標記失敗" });
     }
 
-    // 2026-10-07 發文身分：用哪個帳號發。身分有問題就標失敗（不退回主帳號）
-    const idRes = await resolveIdentityForTask(task.identity_id);
+    // 2026-10-07 發文身分：用哪個帳號發。身分有問題就標失敗（不退回主帳號）。一般貼文可以用粉專身分發社團（2026-10-09）
+    const idRes = await resolveIdentityForTask(task.identity_id, { allowPage: true });
     if (!idRes.ok) {
       await failTask(task.id, idRes.reason, 0);
       return NextResponse.json({ ok: true, task: null, note: idRes.reason });
@@ -153,7 +179,7 @@ export async function POST(req: Request) {
         autoPublish: run?.auto_publish === 1,
         attempts: run?.attempts ?? 1,
       },
-      identity: identityPayload(idRes.identity),
+      identity: identityPayload(idRes.identity, idRes.parent),
       draft: {
         id: draft.id,
         title: draft.title,
@@ -174,8 +200,8 @@ export async function POST(req: Request) {
       // IG／Threads 的目標（2026-09-21）：runner 不開瀏覽器，直接讀資料庫用官方 API 發
       // （tools/fb-autopost/runner.mjs → src/lib/social-publish.ts publishSocialItemsForTask）
       socialTargets: pending
-        .filter((i) => isSocialPlatform(i.channel))
-        .map((i) => ({ itemId: i.id, platform: i.channel })),
+        .filter((i) => isApiItem(i.channel))
+        .map((i) => ({ itemId: i.id, platform: i.channel, identityId: i.target_identity_id ?? null })),
     });
   }
 
@@ -268,7 +294,7 @@ export async function POST(req: Request) {
     const rows = await listIdentities({ onlyActive: true });
     return NextResponse.json({
       ok: true,
-      identities: rows.filter((r) => r.kind === "personal").map(identityPayload),
+      identities: rows.filter((r) => r.kind === "personal").map((r) => identityPayload(r)),
     });
   }
 

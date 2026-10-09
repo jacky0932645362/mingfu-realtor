@@ -23,8 +23,16 @@
  * 🔴 這個檔要能被桌機 runner 用裸 node（type-stripping）直接 import ——
  *    不能 import next/*、不能用 enum／namespace／parameter properties。跟 fb-factory.ts 同一條規矩。
  *
- * token 存在資料庫 social_account（不是 .env）：長效 token 60 天要續，續了要能寫回去，
- * Vercel 的環境變數改不動；而且桌機 runner 跟網站要共用同一把。
+ *
+ * 🆕 2026-10-09 多組帳號＋粉絲專頁（本人：「一、二都要做，IG/Threads 也要多組，可以讓我任意切換、自己選擇」）：
+ *   ・帳號不再一個平台只有一組：每一個 IG／Threads 帳號、每一個粉專，都是「發文身分」（fb_identity，kind＝ig｜threads｜page），
+ *     鑰匙放 fb_identity_token（不會送到畫面）。舊的 social_account 表保留不刪（2026-10-09 查過是空的，從沒連過）。
+ *   ・排程的 IG／Threads／粉專動態目標，每一個都記著要發到哪個身分（fb_task_item.target_identity_id）。
+ *   ・粉專走 Facebook 登入（另一組 FB_APP_ID／FB_APP_SECRET＝Meta 應用程式本身的編號），授權一次會把
+ *     「你管理的全部粉專」一起帶進來，每個粉專各一把粉專鑰匙（從長效使用者鑰匙換來的粉專鑰匙不會過期）。
+ *   ・官方文件（2026-10-09 查）：發粉專動態 POST /{page-id}/feed（message），權限要 pages_manage_posts＋
+ *     pages_read_engagement 等，用粉專鑰匙；目前版本 v25.0。多張照片＝先 /{page-id}/photos published=false
+ *     一張一張傳，再 /feed 帶 attached_media（這一段官方 posts 頁沒寫、是長期通用的做法，還沒對真粉專跑過）。
  */
 import { db } from "@/lib/db";
 import {
@@ -39,18 +47,41 @@ import {
   socialLabel,
   type SocialPlatform,
 } from "@/lib/fb-factory";
+import {
+  ensureFbIdentityTable,
+  getIdentity,
+  getIdentityToken,
+  updateIdentityToken,
+  upsertApiIdentity,
+  listIdentities,
+  type FbIdentityRow,
+} from "@/lib/fb-identity";
 import { getProperty } from "@/lib/property";
 import { directImageUrl, parseImageList } from "@/lib/media-url";
 import { IG_CAPTION_LIMIT, THREADS_TEXT_LIMIT, socialLength } from "@/lib/fb-social-copy";
+
+/** 走官方 API 的平台：IG／Threads（social）＋粉專（fb）。OAuth 網址上的 [platform] 也是這三個。 */
+export type OAuthPlatform = SocialPlatform | "fb";
+export type ApiTargetChannel = SocialPlatform | "page";
+
+export function isOAuthPlatform(v: unknown): v is OAuthPlatform {
+  return v === "ig" || v === "threads" || v === "fb";
+}
 
 /* ────────────────── 設定（.env） ────────────────── */
 
 export type SocialAppConfig = { appId: string; appSecret: string };
 
-/** 兩個平台在 Meta 開發者後台各有一組 App ID／Secret（同一個 Meta 應用程式底下，Instagram 跟 Threads 兩個產品各自給一組）。 */
-export function socialAppConfig(platform: SocialPlatform): SocialAppConfig | null {
-  const appId = (platform === "ig" ? process.env.IG_APP_ID : process.env.THREADS_APP_ID) || "";
-  const appSecret = (platform === "ig" ? process.env.IG_APP_SECRET : process.env.THREADS_APP_SECRET) || "";
+/**
+ * 三組 App ID／Secret（都在同一個 Meta 應用程式底下）：
+ *   ig       Instagram 產品給的那組（IG_APP_ID）
+ *   threads  Threads 產品給的那組（THREADS_APP_ID）
+ *   fb       應用程式本身的編號（FB_APP_ID）—— 粉專走 Facebook 登入用這組
+ */
+export function socialAppConfig(platform: OAuthPlatform): SocialAppConfig | null {
+  const appId = (platform === "ig" ? process.env.IG_APP_ID : platform === "threads" ? process.env.THREADS_APP_ID : process.env.FB_APP_ID) || "";
+  const appSecret =
+    (platform === "ig" ? process.env.IG_APP_SECRET : platform === "threads" ? process.env.THREADS_APP_SECRET : process.env.FB_APP_SECRET) || "";
   if (!appId.trim() || !appSecret.trim()) return null;
   return { appId: appId.trim(), appSecret: appSecret.trim() };
 }
@@ -63,132 +94,73 @@ export function socialSiteBase(): string {
   );
 }
 
-export function socialRedirectUri(platform: SocialPlatform): string {
+export function socialRedirectUri(platform: OAuthPlatform): string {
   return `${socialSiteBase()}/api/social/oauth/${platform}/callback`;
 }
 
 const IG_GRAPH = (process.env.IG_GRAPH_BASE || "https://graph.instagram.com").replace(/\/+$/, "");
 const THREADS_GRAPH = (process.env.THREADS_GRAPH_BASE || "https://graph.threads.net/v1.0").replace(/\/+$/, "");
+/** 粉專（Facebook Graph API）。2026-10-09 官方文件範例是 v25.0；Meta 改版時改這個環境變數就好。 */
+const FB_GRAPH_VERSION = process.env.FB_GRAPH_VERSION || "v25.0";
+const FB_GRAPH = `https://graph.facebook.com/${FB_GRAPH_VERSION}`;
 
 const IG_SCOPES = ["instagram_business_basic", "instagram_business_content_publish"];
 const THREADS_SCOPES = ["threads_basic", "threads_content_publish"];
+/**
+ * 發粉專貼文最少要的三個：列出自己管理的粉專／發文／讀貼文（發文權限的前置）。
+ * 2026-10-10 本人建應用程式時對過畫面：要求的權限一定要先在「管理粉絲專頁」使用案例裡按「新增」，
+ * 沒加的會讓授權畫面直接報錯——所以只要真的用得到的，留言管理那些不要。
+ */
+const FB_PAGE_SCOPES = ["pages_show_list", "pages_manage_posts", "pages_read_engagement"];
 
-/* ────────────────── 資料表 social_account ────────────────── */
-
-export type SocialAccountRow = {
-  platform: string;
-  user_id: string;
-  username: string | null;
-  access_token: string;
-  token_expires_at: Date | null;
-  scopes: string | null;
-  connected_at: Date;
-  refreshed_at: Date | null;
-  updated_at: Date | null;
-};
-
-let tableEnsured = false;
-export async function ensureSocialAccountTable(): Promise<void> {
-  if (tableEnsured) return;
-  await db.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS social_account (
-      platform         VARCHAR(16)  NOT NULL,
-      user_id          VARCHAR(64)  NOT NULL,
-      username         VARCHAR(120) NULL,
-      access_token     TEXT         NOT NULL,
-      token_expires_at DATETIME     NULL,
-      scopes           VARCHAR(300) NULL,
-      connected_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      refreshed_at     DATETIME     NULL,
-      updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (platform)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
-  tableEnsured = true;
+export function scopesFor(platform: OAuthPlatform): string[] {
+  return platform === "ig" ? IG_SCOPES : platform === "threads" ? THREADS_SCOPES : FB_PAGE_SCOPES;
 }
 
-export async function getSocialAccount(platform: SocialPlatform): Promise<SocialAccountRow | null> {
-  await ensureSocialAccountTable();
-  const rows = await db.$queryRaw<SocialAccountRow[]>`SELECT * FROM social_account WHERE platform = ${platform} LIMIT 1`;
-  return rows[0] || null;
+/* ────────────────── 帳號（＝發文身分）的鑰匙 ────────────────── */
+
+const KIND_OF: Record<ApiTargetChannel, "ig" | "threads" | "page"> = { ig: "ig", threads: "threads", page: "page" };
+
+export function apiTargetLabel(c: ApiTargetChannel): string {
+  return c === "page" ? "粉專" : socialLabel(c);
 }
 
-export async function saveSocialAccount(data: {
-  platform: SocialPlatform;
-  userId: string;
-  username: string | null;
-  accessToken: string;
-  expiresAt: Date | null;
-  scopes: string[];
-}): Promise<void> {
-  await ensureSocialAccountTable();
-  await db.$executeRawUnsafe(
-    `INSERT INTO social_account (platform, user_id, username, access_token, token_expires_at, scopes, connected_at, refreshed_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP)
-     ON DUPLICATE KEY UPDATE
-       user_id = VALUES(user_id), username = VALUES(username), access_token = VALUES(access_token),
-       token_expires_at = VALUES(token_expires_at), scopes = VALUES(scopes),
-       connected_at = CURRENT_TIMESTAMP, refreshed_at = NULL, updated_at = CURRENT_TIMESTAMP`,
-    data.platform,
-    data.userId,
-    data.username,
-    data.accessToken,
-    data.expiresAt,
-    data.scopes.join(",").slice(0, 300),
-  );
-}
+type ResolvedAccount = { identity: FbIdentityRow; userId: string; token: string };
 
-export async function disconnectSocialAccount(platform: SocialPlatform): Promise<void> {
-  await ensureSocialAccountTable();
-  await db.$executeRawUnsafe("DELETE FROM social_account WHERE platform = ?", platform);
-}
-
-/** 給後台「帳號連結」頁看的狀態（不含 token 本體）。 */
-export type SocialAccountStatus = {
-  platform: SocialPlatform;
-  label: string;
-  appConfigured: boolean;
-  connected: boolean;
-  username: string | null;
-  userId: string | null;
-  expiresAt: Date | null;
-  daysLeft: number | null;
-  connectedAt: Date | null;
-  refreshedAt: Date | null;
-  redirectUri: string;
-  scopes: string[];
-};
-
-export async function socialAccountStatus(platform: SocialPlatform): Promise<SocialAccountStatus> {
-  const acc = await getSocialAccount(platform);
-  const expiresAt = acc?.token_expires_at ?? null;
-  return {
-    platform,
-    label: socialLabel(platform),
-    appConfigured: Boolean(socialAppConfig(platform)),
-    connected: Boolean(acc),
-    username: acc?.username ?? null,
-    userId: acc?.user_id ?? null,
-    expiresAt,
-    daysLeft: expiresAt ? Math.floor((expiresAt.getTime() - Date.now()) / 86_400_000) : null,
-    connectedAt: acc?.connected_at ?? null,
-    refreshedAt: acc?.refreshed_at ?? null,
-    redirectUri: socialRedirectUri(platform),
-    scopes: platform === "ig" ? IG_SCOPES : THREADS_SCOPES,
-  };
-}
-
-export async function allSocialAccountStatus(): Promise<Record<SocialPlatform, SocialAccountStatus>> {
-  const [ig, threads] = await Promise.all([socialAccountStatus("ig"), socialAccountStatus("threads")]);
-  return { ig, threads };
+/**
+ * 找這個目標要用哪個身分的鑰匙。
+ *   identityId 有給 → 一定要是那個身分、種類要對、啟用中、有鑰匙，不然丟錯（不會偷偷換成別的帳號）
+ *   identityId 空（2026-10-09 以前排的舊資料，當時只有一組）→ 那個平台剛好只有一個啟用中的帳號才用它；
+ *     有好幾個就丟錯請本人重排，不猜。
+ */
+export async function resolveApiAccount(channel: ApiTargetChannel, identityId: string | null | undefined): Promise<ResolvedAccount> {
+  await ensureFbIdentityTable();
+  const kind = KIND_OF[channel];
+  let identity: FbIdentityRow | null;
+  if (identityId) {
+    identity = await getIdentity(identityId);
+    if (!identity) throw new Error(`${apiTargetLabel(channel)} 帳號已經被刪掉了，這個目標沒發`);
+    if (identity.kind !== kind) throw new Error(`「${identity.name}」不是 ${apiTargetLabel(channel)} 帳號，這個目標沒發`);
+  } else {
+    const all = (await listIdentities({ onlyActive: true })).filter((r) => r.kind === kind);
+    if (all.length === 0) throw new Error(`${apiTargetLabel(channel)} 還沒連結帳號 —— 去「FB 貼文工廠 → 發文身分」按連結`);
+    if (all.length > 1) throw new Error(`${apiTargetLabel(channel)} 連了 ${all.length} 個帳號，這筆是舊排程沒指定發哪個，請重新排一次`);
+    identity = all[0];
+  }
+  if (identity.is_active !== 1) throw new Error(`「${identity.name}」已停用，這個目標沒發`);
+  const tok = await getIdentityToken(identity.id);
+  if (!tok) throw new Error(`「${identity.name}」沒有授權鑰匙，重新連結一次`);
+  const userId = kind === "page" ? identity.page_id : identity.ext_user_id;
+  if (!userId) throw new Error(`「${identity.name}」缺帳號編號，重新連結一次`);
+  return { identity, userId, token: tok.access_token };
 }
 
 /* ────────────────── HTTP 小工具 ────────────────── */
 
 export class SocialApiError extends Error {
-  platform: SocialPlatform;
+  platform: OAuthPlatform;
   status: number;
-  constructor(platform: SocialPlatform, status: number, message: string) {
+  constructor(platform: OAuthPlatform, status: number, message: string) {
     super(message);
     this.name = "SocialApiError";
     this.platform = platform;
@@ -210,7 +182,7 @@ function describeApiError(body: unknown): string {
   return typeof body === "string" ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200);
 }
 
-async function apiGet(platform: SocialPlatform, url: string, params: Record<string, string>): Promise<Json> {
+async function apiGet(platform: OAuthPlatform, url: string, params: Record<string, string>): Promise<Json> {
   const u = new URL(url);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   const res = await fetch(u, { method: "GET", headers: { accept: "application/json" }, signal: AbortSignal.timeout(30_000) });
@@ -219,7 +191,7 @@ async function apiGet(platform: SocialPlatform, url: string, params: Record<stri
   return body;
 }
 
-async function apiPost(platform: SocialPlatform, url: string, params: Record<string, string>): Promise<Json> {
+async function apiPost(platform: OAuthPlatform, url: string, params: Record<string, string>): Promise<Json> {
   const form = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) form.set(k, v);
   const res = await fetch(url, {
@@ -238,26 +210,47 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /* ────────────────── OAuth ────────────────── */
 
 /** 帳號連結第一步：把本人送去 Meta 的授權畫面。state 由呼叫端產生並存進 cookie 防 CSRF。 */
-export function socialAuthorizeUrl(platform: SocialPlatform, state: string): string {
+export function socialAuthorizeUrl(platform: OAuthPlatform, state: string): string {
   const cfg = socialAppConfig(platform);
-  if (!cfg) throw new Error(`還沒設定 ${platform === "ig" ? "IG_APP_ID／IG_APP_SECRET" : "THREADS_APP_ID／THREADS_APP_SECRET"}`);
-  const u = new URL(platform === "ig" ? "https://www.instagram.com/oauth/authorize" : "https://threads.net/oauth/authorize");
+  if (!cfg) {
+    const need = platform === "ig" ? "IG_APP_ID／IG_APP_SECRET" : platform === "threads" ? "THREADS_APP_ID／THREADS_APP_SECRET" : "FB_APP_ID／FB_APP_SECRET";
+    throw new Error(`還沒設定 ${need}`);
+  }
+  const u = new URL(
+    platform === "ig"
+      ? "https://www.instagram.com/oauth/authorize"
+      : platform === "threads"
+        ? "https://threads.net/oauth/authorize"
+        : `https://www.facebook.com/${FB_GRAPH_VERSION}/dialog/oauth`,
+  );
   u.searchParams.set("client_id", cfg.appId);
   u.searchParams.set("redirect_uri", socialRedirectUri(platform));
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", (platform === "ig" ? IG_SCOPES : THREADS_SCOPES).join(","));
+  // 粉專：2026-10-10 本人建的是「商家版」應用程式，左欄是「商家專用 Facebook 登入」。這種登入官方做法是
+  // 帶 config_id（在後台建一組「設定」，權限勾在那裡），而不是帶 scope。有設定 FB_LOGIN_CONFIG_ID 就用它，
+  // 沒有才退回傳統的 scope 寫法。
+  const fbConfigId = platform === "fb" ? (process.env.FB_LOGIN_CONFIG_ID || "").trim() : "";
+  if (fbConfigId) u.searchParams.set("config_id", fbConfigId);
+  else u.searchParams.set("scope", scopesFor(platform).join(","));
   u.searchParams.set("state", state);
+  // IG：每次都讓本人重新選帳號（要連第二、第三組 IG 才選得到別的）
   if (platform === "ig") u.searchParams.set("force_reauth", "true");
+  // 粉專：每次都重新問要授權哪些粉專（新增粉專後再按一次就帶得進來）
+  if (platform === "fb") u.searchParams.set("auth_type", "rerequest");
   return u.toString();
 }
 
+export type ConnectResult = { platform: OAuthPlatform; names: string[]; created: number };
+
 /**
- * 帳號連結第二步：拿 code 換短效 token → 換 60 天長效 token → 查帳號名 → 存進資料庫。
- * 兩個平台的端點長得幾乎一樣，只差網域跟 grant_type 的名字。
+ * 帳號連結第二步：拿 code 換短效 token → 換 60 天長效 token → 查帳號 → 存成發文身分。
+ * IG／Threads：一次一個帳號。粉專：一次把授權的全部粉專都存進來。
  */
-export async function socialExchangeCode(platform: SocialPlatform, rawCode: string): Promise<SocialAccountStatus> {
+export async function socialExchangeCode(platform: OAuthPlatform, rawCode: string): Promise<ConnectResult> {
   const cfg = socialAppConfig(platform);
   if (!cfg) throw new Error("App ID／Secret 沒設定");
+  if (platform === "fb") return fbExchangeCode(cfg, rawCode);
+
   // Instagram 回來的 code 尾巴會多一個 "#_"，官方文件叫你自己砍掉
   const code = rawCode.replace(/#_$/, "");
 
@@ -294,28 +287,84 @@ export async function socialExchangeCode(platform: SocialPlatform, rawCode: stri
       : await apiGet("threads", `${THREADS_GRAPH}/me`, { fields: "id,username", access_token: token });
   const userId = String((platform === "ig" ? me.user_id : me.id) || shortUserId || "");
   if (!userId) throw new Error(`${socialLabel(platform)} 查不到帳號 ID`);
+  const username = me.username ? String(me.username) : null;
 
-  await saveSocialAccount({
-    platform,
-    userId,
-    username: me.username ? String(me.username) : null,
+  const r = await upsertApiIdentity({
+    kind: platform,
+    extId: userId,
+    name: username ? `@${username}` : `${socialLabel(platform)} ${userId}`,
+    username,
     accessToken: token,
     expiresAt: new Date(Date.now() + expiresIn * 1000),
-    scopes: platform === "ig" ? IG_SCOPES : THREADS_SCOPES,
+    scopes: scopesFor(platform),
   });
-  return socialAccountStatus(platform);
+  return { platform, names: [username ? `@${username}` : userId], created: r.created ? 1 : 0 };
+}
+
+/** 粉專：code → 使用者鑰匙 → 長效使用者鑰匙 → /me/accounts 列出管理的粉專（各帶一把粉專鑰匙）→ 每個粉專存成身分。 */
+async function fbExchangeCode(cfg: SocialAppConfig, code: string): Promise<ConnectResult> {
+  const short = await apiGet("fb", `${FB_GRAPH}/oauth/access_token`, {
+    client_id: cfg.appId,
+    client_secret: cfg.appSecret,
+    redirect_uri: socialRedirectUri("fb"),
+    code,
+  });
+  const shortTok = String(short.access_token || "");
+  if (!shortTok) throw new Error(`Facebook 沒回使用者鑰匙：${JSON.stringify(short).slice(0, 200)}`);
+  const long = await apiGet("fb", `${FB_GRAPH}/oauth/access_token`, {
+    grant_type: "fb_exchange_token",
+    client_id: cfg.appId,
+    client_secret: cfg.appSecret,
+    fb_exchange_token: shortTok,
+  });
+  const userTok = String(long.access_token || shortTok);
+
+  const names: string[] = [];
+  let created = 0;
+  let url: string | null = `${FB_GRAPH}/me/accounts`;
+  let params: Record<string, string> = { fields: "id,name,access_token,link,tasks", limit: "100", access_token: userTok };
+  for (let guard = 0; url && guard < 10; guard += 1) {
+    const page = await apiGet("fb", url, params);
+    const data = (page.data as Array<{ id?: string; name?: string; access_token?: string; link?: string; tasks?: string[] }>) || [];
+    for (const p of data) {
+      if (!p.id || !p.access_token) continue;
+      // 官方 posts 文件：發文要能做 CREATE_CONTENT。做不到的粉專（只是分析師之類）就不收，免得排了才失敗
+      if (Array.isArray(p.tasks) && !p.tasks.includes("CREATE_CONTENT")) continue;
+      const r = await upsertApiIdentity({
+        kind: "page",
+        extId: p.id,
+        name: p.name || `粉專 ${p.id}`,
+        username: null,
+        pageUrl: p.link || `https://www.facebook.com/${p.id}`,
+        accessToken: p.access_token,
+        // 從長效使用者鑰匙換來的粉專鑰匙沒有到期日
+        expiresAt: null,
+        scopes: FB_PAGE_SCOPES,
+      });
+      names.push(p.name || p.id);
+      if (r.created) created += 1;
+    }
+    const next = (page.paging as { next?: string } | undefined)?.next;
+    url = next || null;
+    params = {};
+  }
+  if (!names.length) throw new Error("授權成功，但沒有拿到任何「可以發文」的粉專（授權畫面要勾選粉專、而且你要是那個粉專的管理員）");
+  return { platform: "fb", names, created };
 }
 
 /**
- * 長效 token 60 天到期。剩不到 20 天、而且上次拿到 token 已超過 24 小時（官方規定滿一天才能續）→ 續一次。
- * 每次發文前呼叫；續不成不擋發文（token 還沒過期就照發），只把錯誤丟回去給呼叫端印。
+ * IG／Threads 長效 token 60 天到期。剩不到 20 天、而且上次拿到 token 已超過 24 小時（官方規定滿一天才能續）→ 續一次。
+ * 每次發文前呼叫；續不成不擋發文（token 還沒過期就照發），只把錯誤丟回去給呼叫端印。粉專鑰匙不會過期，不用續。
  */
-export async function refreshSocialTokenIfNeeded(platform: SocialPlatform): Promise<{ refreshed: boolean; note?: string }> {
-  const acc = await getSocialAccount(platform);
+export async function refreshIdentityTokenIfNeeded(identityId: string): Promise<{ refreshed: boolean; note?: string }> {
+  const identity = await getIdentity(identityId);
+  if (!identity || (identity.kind !== "ig" && identity.kind !== "threads")) return { refreshed: false };
+  const platform = identity.kind as SocialPlatform;
+  const acc = await getIdentityToken(identity.id);
   if (!acc) return { refreshed: false, note: "沒連結" };
-  const exp = acc.token_expires_at ? acc.token_expires_at.getTime() : 0;
+  const exp = acc.token_expires_at ? new Date(acc.token_expires_at).getTime() : 0;
   const daysLeft = exp ? (exp - Date.now()) / 86_400_000 : 0;
-  const lastIssued = (acc.refreshed_at || acc.connected_at).getTime();
+  const lastIssued = new Date(acc.refreshed_at || acc.connected_at).getTime();
   const ageHours = (Date.now() - lastIssued) / 3_600_000;
   if (exp && daysLeft > 20) return { refreshed: false };
   if (ageHours < 24) return { refreshed: false, note: "token 還沒滿 24 小時，官方不讓續" };
@@ -328,16 +377,22 @@ export async function refreshSocialTokenIfNeeded(platform: SocialPlatform): Prom
     const token = String(r.access_token || "");
     const expiresIn = Number(r.expires_in || 60 * 86_400);
     if (!token) return { refreshed: false, note: "續 token 沒回新 token" };
-    await db.$executeRawUnsafe(
-      "UPDATE social_account SET access_token = ?, token_expires_at = ?, refreshed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE platform = ?",
-      token,
-      new Date(Date.now() + expiresIn * 1000),
-      platform,
-    );
+    await updateIdentityToken(identity.id, token, new Date(Date.now() + expiresIn * 1000));
     return { refreshed: true };
   } catch (e) {
     return { refreshed: false, note: `續 token 失敗：${e instanceof Error ? e.message : String(e)}` };
   }
+}
+
+/** 全部 IG／Threads 帳號都檢查一次要不要續（後台「發文身分」頁的按鈕用）。 */
+export async function refreshAllIdentityTokens(): Promise<string[]> {
+  const rows = (await listIdentities({ onlyActive: true })).filter((r) => r.kind === "ig" || r.kind === "threads");
+  const out: string[] = [];
+  for (const r of rows) {
+    const res = await refreshIdentityTokenIfNeeded(r.id);
+    out.push(`${r.name}：${res.refreshed ? "已續期" : res.note || "還不用續"}`);
+  }
+  return out;
 }
 
 /* ────────────────── 照片 ────────────────── */
@@ -460,11 +515,10 @@ async function waitContainer(
   throw new SocialApiError(platform, 408, "媒體容器等太久還沒處理完（90 秒），這次先放棄");
 }
 
-export async function publishToInstagram(input: { caption: string; photos: string[] }): Promise<{ id: string; permalink: string | null }> {
-  const acc = await getSocialAccount("ig");
-  if (!acc) throw new Error("Instagram 還沒連結帳號（FB 貼文工廠 → IG／Threads 帳號）");
-  const token = acc.access_token;
-  const uid = acc.user_id;
+type ApiAccount = { userId: string; token: string };
+
+export async function publishToInstagram(acc: ApiAccount, input: { caption: string; photos: string[] }): Promise<{ id: string; permalink: string | null }> {
+  const { token, userId: uid } = acc;
   if (!input.photos.length) throw new Error("IG 一定要有照片才能發（Threads 可以純文字，IG 不行）");
   if (socialLength(input.caption) > IG_CAPTION_LIMIT) throw new Error(`IG 說明超過 ${IG_CAPTION_LIMIT} 字`);
 
@@ -501,11 +555,8 @@ export async function publishToInstagram(input: { caption: string; photos: strin
 
 /* ────────────────── 真的發：Threads ────────────────── */
 
-export async function publishToThreads(input: { text: string; photos: string[] }): Promise<{ id: string; permalink: string | null }> {
-  const acc = await getSocialAccount("threads");
-  if (!acc) throw new Error("Threads 還沒連結帳號（FB 貼文工廠 → IG／Threads 帳號）");
-  const token = acc.access_token;
-  const uid = acc.user_id;
+export async function publishToThreads(acc: ApiAccount, input: { text: string; photos: string[] }): Promise<{ id: string; permalink: string | null }> {
+  const { token, userId: uid } = acc;
   if (!input.text.trim()) throw new Error("Threads 內文是空的");
   if (socialLength(input.text) > THREADS_TEXT_LIMIT) throw new Error(`Threads 內文超過 ${THREADS_TEXT_LIMIT} 字`);
 
@@ -554,10 +605,46 @@ export async function publishToThreads(input: { text: string; photos: string[] }
   return { id: mediaId, permalink };
 }
 
-/* ────────────────── 高階：發一則文案到某平台 ────────────────── */
+/* ────────────────── 真的發：粉專動態（2026-10-09） ────────────────── */
+
+/**
+ * 粉專自己的動態。沒照片＝/feed 只帶 message；有照片＝每張先用 /photos published=false 傳上去拿 id，
+ * 再一次 /feed 帶 attached_media（多張圖一則貼文）。最多 10 張，跟 FB 個人帳號那條一樣。
+ */
+export async function publishToPage(acc: ApiAccount, input: { message: string; photos: string[] }): Promise<{ id: string; permalink: string | null }> {
+  const { token, userId: pageId } = acc;
+  if (!input.message.trim()) throw new Error("粉專貼文內文是空的");
+  const params: Record<string, string> = { message: input.message, access_token: token };
+  const photos = input.photos.slice(0, 10);
+  if (photos.length) {
+    const ids: string[] = [];
+    for (const url of photos) {
+      const r = await apiPost("fb", `${FB_GRAPH}/${pageId}/photos`, { url, published: "false", access_token: token });
+      if (!r.id) throw new SocialApiError("fb", 400, `照片上傳沒回編號：${JSON.stringify(r).slice(0, 120)}`);
+      ids.push(String(r.id));
+    }
+    ids.forEach((id, i) => {
+      params[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id });
+    });
+  }
+  const pub = await apiPost("fb", `${FB_GRAPH}/${pageId}/feed`, params);
+  const postId = String(pub.id || "");
+  if (!postId) throw new SocialApiError("fb", 400, `發文沒回編號：${JSON.stringify(pub).slice(0, 120)}`);
+  let permalink: string | null = null;
+  try {
+    const m = await apiGet("fb", `${FB_GRAPH}/${postId}`, { fields: "permalink_url", access_token: token });
+    permalink = m.permalink_url ? String(m.permalink_url) : null;
+  } catch {
+    /* 拿不到連結不算失敗 */
+  }
+  return { id: postId, permalink };
+}
+
+/* ────────────────── 高階：發一則文案到某個帳號 ────────────────── */
 
 export type SocialPublishResult = {
-  platform: SocialPlatform;
+  channel: ApiTargetChannel;
+  identityName: string;
   id: string;
   url: string | null;
   photosUsed: number;
@@ -566,68 +653,90 @@ export type SocialPublishResult = {
 };
 
 /**
- * 發一則 fb_draft 的 IG／Threads 版本。內文＝貼文庫那則存的（或推導的）、照片＝物件庫／facts.photos。
- * 成功就把 social_json 標 posted＋記連結。失敗直接丟 Error（訊息給人看的，中文）。
+ * 發一則 fb_draft 到某個 IG／Threads／粉專帳號。
+ *   IG／Threads：內文＝貼文庫那則的 IG／Threads 版本；成功把 social_json 標 posted＋記連結
+ *   粉專：內文＝一般貼文（post_text，跟發社團同一份）
+ * 照片＝物件庫／facts.photos。失敗直接丟 Error（訊息給人看的，中文）。
  */
-export async function publishSocialForDraft(draftId: string, platform: SocialPlatform): Promise<SocialPublishResult> {
+export async function publishSocialForDraft(
+  draftId: string,
+  channel: ApiTargetChannel,
+  identityId?: string | null,
+): Promise<SocialPublishResult> {
   const draft = await getFbDraft(draftId);
   if (!draft) throw new Error("找不到這則文案");
-  const acc = await getSocialAccount(platform);
-  if (!acc) throw new Error(`${socialLabel(platform)} 還沒連結帳號 —— 去「FB 貼文工廠 → IG／Threads 帳號」按連結`);
-  const tok = await refreshSocialTokenIfNeeded(platform);
+  const acc = await resolveApiAccount(channel, identityId);
+  const tok = channel === "page" ? { refreshed: false } : await refreshIdentityTokenIfNeeded(acc.identity.id);
+  // 續期過的話要重讀一次鑰匙
+  const token = tok.refreshed ? (await getIdentityToken(acc.identity.id))?.access_token || acc.token : acc.token;
+  const account = { userId: acc.userId, token };
 
-  const version = getSocialVersions(draft)[platform];
-  const text = version.text.trim();
-  if (!text) throw new Error(`${socialLabel(platform)} 版本內文是空的`);
+  const text = channel === "page" ? (draft.post_text || "").trim() : getSocialVersions(draft)[channel].text.trim();
+  if (!text) throw new Error(`${apiTargetLabel(channel)} 的內文是空的`);
 
-  const checks = await checkSocialPhotos(platform, await draftPhotoUrls(draftId));
-  const photos = checks.filter((c) => c.ok).map((c) => c.url);
+  const checks = await checkSocialPhotos(channel === "page" ? "threads" : channel, await draftPhotoUrls(draftId));
+  const photos = checks.filter((c) => c.ok).map((c) => c.url).slice(0, channel === "page" ? 10 : undefined);
   const skipped = checks.filter((c) => !c.ok);
-  if (platform === "ig" && photos.length === 0) {
+  if (channel === "ig" && photos.length === 0) {
     const why = skipped.length ? skipped.map((s) => `・${s.reason}`).join("\n") : "這則文案沒有照片";
     throw new Error(`IG 一定要有照片，但沒有一張能用：\n${why}`);
   }
 
   const r =
-    platform === "ig"
-      ? await publishToInstagram({ caption: text, photos })
-      : await publishToThreads({ text, photos });
-  await setSocialStatus(draftId, platform, "posted", r.permalink);
-  return { platform, id: r.id, url: r.permalink, photosUsed: photos.length, photosSkipped: skipped, tokenNote: tok.note };
+    channel === "ig"
+      ? await publishToInstagram(account, { caption: text, photos })
+      : channel === "threads"
+        ? await publishToThreads(account, { text, photos })
+        : await publishToPage(account, { message: text, photos });
+  if (isSocialPlatform(channel)) await setSocialStatus(draftId, channel, "posted", r.permalink);
+  return {
+    channel,
+    identityName: acc.identity.name,
+    id: r.id,
+    url: r.permalink,
+    photosUsed: photos.length,
+    photosSkipped: skipped,
+    tokenNote: "note" in tok ? (tok as { note?: string }).note : undefined,
+  };
 }
 
-/* ────────────────── 高階：一份排程工作裡的 IG／Threads 目標 ────────────────── */
+/* ────────────────── 高階：一份排程工作裡走官方 API 的目標 ────────────────── */
 
 export type SocialItemOutcome = {
   itemId: string;
-  platform: SocialPlatform;
+  platform: ApiTargetChannel;
+  identityName: string;
   ok: boolean;
   url: string | null;
   note: string;
 };
 
 /**
- * runner 認領一般貼文工作後先呼叫這個：把 fb_task_item 裡 channel='ig'｜'threads' 的 pending 目標
- * 逐個用 API 發掉、回寫 posted／failed。一個平台失敗不影響另一個，也不影響後面的 FB 社團。
+ * runner 認領一般貼文工作後先呼叫這個：把 fb_task_item 裡 channel='ig'｜'threads'｜'page' 的 pending 目標
+ * 逐個用 API 發掉、回寫 posted／failed。一個目標失敗不影響其他的，也不影響後面的 FB 社團。
  * 失敗的 item 不重試（多半是「沒連結帳號」「照片不合規」這種要人處理的），note 寫清楚原因。
  */
 export async function publishSocialItemsForTask(taskId: string): Promise<SocialItemOutcome[]> {
   const task = await getFbTask(taskId);
   if (!task) return [];
-  const items = (await getTaskItems(taskId)).filter((i) => i.status === "pending" && isSocialPlatform(i.channel));
+  const items = (await getTaskItems(taskId)).filter(
+    (i) => i.status === "pending" && (i.channel === "ig" || i.channel === "threads" || i.channel === "page"),
+  );
   const out: SocialItemOutcome[] = [];
   for (const item of items) {
-    const platform = item.channel as SocialPlatform;
+    const channel = item.channel as ApiTargetChannel;
+    let name = apiTargetLabel(channel);
     try {
-      const r = await publishSocialForDraft(task.draft_id, platform);
+      const r = await publishSocialForDraft(task.draft_id, channel, item.target_identity_id ?? null);
+      name = r.identityName;
       const skipped = r.photosSkipped.length ? `；跳過 ${r.photosSkipped.length} 張照片` : "";
       const note = `${r.url || `已發（id ${r.id}）`}${skipped}`;
       await markItemResult(item.id, "posted", note.slice(0, 300));
-      out.push({ itemId: item.id, platform, ok: true, url: r.url, note });
+      out.push({ itemId: item.id, platform: channel, identityName: name, ok: true, url: r.url, note });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await markItemResult(item.id, "failed", msg.slice(0, 300));
-      out.push({ itemId: item.id, platform, ok: false, url: null, note: msg });
+      out.push({ itemId: item.id, platform: channel, identityName: name, ok: false, url: null, note: msg });
     }
   }
   return out;

@@ -1,7 +1,7 @@
 ﻿# FB 自動發文 —— 存「其他帳號」的登入狀態（發文身分，2026-10-07）
 #
 # 這個檔要存成 UTF-8 with BOM，中文才不會壞（見 learning_給本人點兩下的腳本）。
-# 由桌面的「FB登入-其他帳號.bat」呼叫，那個 .bat 的內容必須是純 ASCII。
+# 由桌面的「FB其他帳號-1登入.bat」呼叫，那個 .bat 的內容必須是純 ASCII。
 #
 # 跟「FB登入.bat」的差別：這支存的是「其他發文身分」自己的登入檔（auth\fb-state-<代號>.json），
 # 完全不會動到主帳號的 fb-state.json。
@@ -46,6 +46,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 Write-Host ""
 Write-Host "等一下會開一個瀏覽器視窗。請在裡面登入「那個身分的」Facebook 帳號（含二階段驗證），" -ForegroundColor Yellow
 Write-Host "登入完回到這個視窗按 Enter。這支程式看不到你的帳號密碼。" -ForegroundColor Yellow
+Write-Host "⚠ 一定要在「它開出來的那個瀏覽器」裡登入；自己另外開的 Chrome 登入不算數。" -ForegroundColor Yellow
 Write-Host "⚠ 要登入的是「另一個」帳號，不是主帳號——如果瀏覽器自動就是主帳號，先登出再換。" -ForegroundColor Yellow
 Write-Host ""
 
@@ -53,7 +54,7 @@ node save-login.mjs "--identity=$key"
 
 Write-Host ""
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "完成。下一步：點「FB抓社團-其他帳號.bat」，輸入同一個登入代號，把這個帳號的社團抓進後台。" -ForegroundColor Green
+    Write-Host "完成。下一步：點「FB其他帳號-2抓社團.bat」，輸入同一個登入代號，把這個帳號的社團抓進後台。" -ForegroundColor Green
 } else {
     Write-Host "沒有正常結束（離開碼 $LASTEXITCODE）。上面的訊息是原因。" -ForegroundColor Red
 }

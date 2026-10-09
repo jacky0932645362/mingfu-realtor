@@ -16,7 +16,8 @@ import {
   getSocialVersions,
   type FbChannel,
 } from "@/lib/fb-factory";
-import { checkSocialPhotos, socialAccountStatus } from "@/lib/social-publish";
+import { checkSocialPhotos } from "@/lib/social-publish";
+import { listIdentities, identityTokenStatus } from "@/lib/fb-identity";
 import { deriveIgCaption, deriveThreadsText, IG_CAPTION_LIMIT, THREADS_TEXT_LIMIT } from "@/lib/fb-social-copy";
 import { SocialDetail } from "./SocialDetail";
 import { buildPostText, checkCopy } from "@/lib/fb-copy";
@@ -82,10 +83,15 @@ export default async function DraftPage({
   if (socialPlatform) {
     const versions = getSocialVersions(draft);
     const v = versions[socialPlatform];
-    const [account, photoChecks] = await Promise.all([
-      socialAccountStatus(socialPlatform),
+    const [idRows, tokenMap, photoChecks] = await Promise.all([
+      listIdentities({ onlyActive: true }),
+      identityTokenStatus(),
       checkSocialPhotos(socialPlatform, photos),
     ]);
+    // 2026-10-09 多組帳號：這個平台連了哪幾組（有授權鑰匙的才列）
+    const accounts = idRows
+      .filter((r) => r.kind === socialPlatform && tokenMap.has(r.id))
+      .map((r) => ({ id: r.id, name: r.name }));
     const tabs = [
       { key: "post", label: "一般貼文", href: `/admin/fb/library/${draft.id}?channel=post` },
       { key: "marketplace", label: "Marketplace", href: draft.marketplace_json ? `/admin/fb/library/${draft.id}?channel=marketplace` : null },
@@ -120,7 +126,7 @@ export default async function DraftPage({
           url={v.url}
           postedAtText={v.postedAt ? fmtDateTime(v.postedAt) : null}
           limit={socialPlatform === "ig" ? IG_CAPTION_LIMIT : THREADS_TEXT_LIMIT}
-          account={{ connected: account.connected, username: account.username, appConfigured: account.appConfigured }}
+          accounts={accounts}
           photos={photoChecks.map((c) => ({ url: c.url, ok: c.ok, reason: c.reason }))}
         />
       </>

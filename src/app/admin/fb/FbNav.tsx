@@ -20,8 +20,8 @@ const NAV: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/admin/fb/activity", label: "執行紀錄", icon: "log" },
   { href: "/admin/fb/delete", label: "自動刪文", icon: "trash" },
   // 2026-10-07：多帳號排程（本人看同業「用哪個身分發」要的）
-  { href: "/admin/fb/identities", label: "發文身分", icon: "user" },
-  { href: "/admin/fb/social", label: "IG／Threads 帳號", icon: "share" },
+  // 2026-10-09：粉專／IG／Threads 帳號都併進「發文身分」（舊的 /admin/fb/social 會轉過去）
+  { href: "/admin/fb/identities", label: "發文身分（帳號／粉專／IG／Threads）", icon: "user" },
   // 物件庫不在 /admin/fb 底下，但「先建物件才有 Marketplace 版本」是整條流程的第一步。
   // 本人 2026-09-22 在工廠裡翻不到「新增物件」，所以把入口放進這裡。
   { href: "/admin/properties", label: "物件庫（新增物件）", icon: "building" },

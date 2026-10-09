@@ -18,12 +18,11 @@ import {
   type FbChannel,
 } from "@/lib/fb-factory";
 import { clashNoteFor, CHANNEL_GAP_MINUTES, MIN_GAP_MINUTES, type ScheduledLite } from "@/lib/fb-rhythm";
-import { listIdentities } from "@/lib/fb-identity";
+import { listIdentities, identityTokenStatus } from "@/lib/fb-identity";
 import { identityIdForDisplay, loginStateOf, loginStateLabel } from "@/lib/fb-identity-core";
 import { CIS, CHIP } from "@/app/admin/fb/_ui/theme";
 import { Icon, type IconName } from "@/app/admin/_ui/icons";
-import { ScheduleForm } from "./ScheduleForm";
-import { allSocialAccountStatus } from "@/lib/social-publish";
+import { ScheduleForm, type IdentityOption } from "./ScheduleForm";
 import { TaskRow } from "./TaskRow";
 import styles from "../fb.module.css";
 
@@ -69,26 +68,62 @@ export default async function SchedulePage({
     listFbTasks({ channel: "post", status: "pending" }),
     listFbTasks({ channel: "marketplace", status: "pending" }),
     lastPostedByGroup(),
-    allSocialAccountStatus(),
+    identityTokenStatus(),
     listIdentities(),
   ]);
 
   const identityNameById = new Map(identityRows.map((r) => [identityIdForDisplay(r.id), r.name]));
   // 只有一個身分（沒新增過其他的）時，任務列不顯示身分名，畫面跟以前一模一樣
   const showIdentityName = identityRows.length > 1;
-  // 排程選單：只列啟用中的個人帳號（粉專第二段才開放）
+  // 排程選單（FB 瀏覽器那一段用誰發）：啟用中的個人帳號＋有設定「借哪個個人帳號切換」的粉專（2026-10-09）
+  const byId = new Map(identityRows.map((r) => [r.id, r]));
   const identityOptions = identityRows
-    .filter((r) => r.is_active === 1 && r.kind === "personal")
-    .map((r) => {
-      const state = loginStateOf(r);
-      return {
-        id: identityIdForDisplay(r.id),
-        name: r.name,
-        isDefault: r.is_default === 1,
-        loginState: state,
-        loginLabel: loginStateLabel(state),
-      };
+    .filter((r) => r.is_active === 1)
+    .flatMap((r): IdentityOption[] => {
+      if (r.kind === "personal") {
+        const state = loginStateOf(r);
+        return [
+          {
+            id: identityIdForDisplay(r.id),
+            name: r.name,
+            kind: "personal" as const,
+            isDefault: r.is_default === 1,
+            loginState: state,
+            loginLabel: loginStateLabel(state),
+            groupOwnerId: identityIdForDisplay(r.id),
+            viaName: null as string | null,
+          },
+        ];
+      }
+      if (r.kind === "page" && r.parent_identity_id) {
+        const parent = byId.get(r.parent_identity_id);
+        if (!parent || parent.is_active !== 1 || parent.kind !== "personal") return [];
+        const state = loginStateOf(parent);
+        return [
+          {
+            id: identityIdForDisplay(r.id),
+            name: r.name,
+            kind: "page" as const,
+            isDefault: false,
+            loginState: state,
+            loginLabel: loginStateLabel(state),
+            groupOwnerId: identityIdForDisplay(parent.id),
+            viaName: parent.name,
+          },
+        ];
+      }
+      return [];
     });
+  // 「同時發到」：每一組粉專／IG／Threads 帳號一個勾選框（沒授權鑰匙的不給勾）
+  const apiAccounts = identityRows
+    .filter((r) => r.is_active === 1 && (r.kind === "page" || r.kind === "ig" || r.kind === "threads"))
+    .map((r) => ({
+      id: r.id,
+      kind: r.kind as "page" | "ig" | "threads",
+      name: r.name,
+      sub: r.kind === "page" ? null : r.ext_username ? `@${r.ext_username}` : null,
+      ready: social.has(r.id),
+    }));
 
   const counts: Record<FbChannel, number> = { post: postPending.length, marketplace: mpPending.length };
 
@@ -161,6 +196,7 @@ export default async function SchedulePage({
         groupCount: items.filter((i) => i.channel === "group").length,
         shareIg: items.some((i) => i.channel === "ig"),
         shareThreads: items.some((i) => i.channel === "threads"),
+        sharePages: items.filter((i) => i.channel === "page").length,
         progress: total > 0 ? `${posted}/${total}` : "",
         autoPublish: run?.auto_publish === 1,
         status: t.status,
@@ -257,10 +293,7 @@ export default async function SchedulePage({
         channel={channel}
         preselectDraft={sp.draft || ""}
         marketplaceOnly={channel === "marketplace"}
-        social={{
-          ig: { connected: social.ig.connected, username: social.ig.username, appConfigured: social.ig.appConfigured },
-          threads: { connected: social.threads.connected, username: social.threads.username, appConfigured: social.threads.appConfigured },
-        }}
+        apiAccounts={apiAccounts}
       />
 
       <h3 className={styles.cardTitle} style={{ marginTop: 26 }}>

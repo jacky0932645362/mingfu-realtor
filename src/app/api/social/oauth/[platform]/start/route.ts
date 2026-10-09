@@ -10,8 +10,7 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { isCurrentUserAdmin } from "@/lib/admin-check";
-import { isSocialPlatform } from "@/lib/fb-factory";
-import { socialAuthorizeUrl } from "@/lib/social-publish";
+import { isOAuthPlatform, socialAuthorizeUrl } from "@/lib/social-publish";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +19,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ platform: strin
     return NextResponse.json({ ok: false, error: "權限不足" }, { status: 403 });
   }
   const { platform } = await ctx.params;
-  if (!isSocialPlatform(platform)) {
-    return NextResponse.json({ ok: false, error: "平台只能是 ig 或 threads" }, { status: 400 });
+  if (!isOAuthPlatform(platform)) {
+    return NextResponse.json({ ok: false, error: "平台只能是 ig、threads 或 fb（粉專）" }, { status: 400 });
   }
   const state = randomBytes(16).toString("hex");
   let url: string;
@@ -30,7 +29,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ platform: strin
   } catch (e) {
     const origin = new URL(req.url).origin;
     const msg = encodeURIComponent(e instanceof Error ? e.message : "設定不完整");
-    return NextResponse.redirect(`${origin}/admin/fb/social?error=${msg}`);
+    return NextResponse.redirect(`${origin}/admin/fb/identities?error=${msg}`);
   }
   const res = NextResponse.redirect(url);
   res.cookies.set(`social_oauth_state_${platform}`, state, {

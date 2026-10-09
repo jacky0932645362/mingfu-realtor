@@ -69,9 +69,9 @@ import {
   getSocialVersions,
   type SocialPlatform,
 } from "@/lib/fb-factory";
-import { publishSocialForDraft, disconnectSocialAccount, refreshSocialTokenIfNeeded } from "@/lib/social-publish";
+import { publishSocialForDraft, refreshAllIdentityTokens, apiTargetLabel, type ApiTargetChannel } from "@/lib/social-publish";
 import { IG_CAPTION_LIMIT, THREADS_TEXT_LIMIT, socialLength } from "@/lib/fb-social-copy";
-import { getIdentity, type FbIdentityRow } from "@/lib/fb-identity";
+import { getIdentity, getIdentityToken, type FbIdentityRow } from "@/lib/fb-identity";
 import { normalizeIdentityId, sameIdentity, loginStateOf } from "@/lib/fb-identity-core";
 import {
   normalizePacificInput,
@@ -220,15 +220,16 @@ export async function updateSocialTextAction(id: string, platform: string, text:
  * 現在就發到 IG／Threads —— 不排程、不經過 runner，這個網站直接打官方 API。
  * 🔴 這是真的公開發出去。按鈕上會再問一次。
  */
-export async function publishSocialNowAction(id: string, platform: string): Promise<Result> {
+export async function publishSocialNowAction(id: string, platform: string, identityId?: string): Promise<Result> {
   const denied = await guard();
   if (denied) return { ok: false, error: denied };
-  if (!isSocialPlatform(platform)) return { ok: false, error: "平台不對" };
+  if (!isSocialPlatform(platform) && platform !== "page") return { ok: false, error: "平台不對" };
   try {
-    const r = await publishSocialForDraft(id, platform as SocialPlatform);
+    // 2026-10-09 多組帳號：畫面上選了哪個帳號就發哪個；沒選（只有一組）讓 resolveApiAccount 自己挑唯一那組
+    const r = await publishSocialForDraft(id, platform as ApiTargetChannel, identityId || null);
     revalidateAll();
     const skipped = r.photosSkipped.length ? `（跳過 ${r.photosSkipped.length} 張照片：${r.photosSkipped.map((x) => x.reason).join("；")}）` : "";
-    return { ok: true, message: `已發到 ${socialLabel(platform)}${r.url ? `：${r.url}` : ""}，用了 ${r.photosUsed} 張照片${skipped}` };
+    return { ok: true, message: `已發到 ${apiTargetLabel(platform as ApiTargetChannel)}「${r.identityName}」${r.url ? `：${r.url}` : ""}，用了 ${r.photosUsed} 張照片${skipped}` };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "發文失敗" };
   }
@@ -248,29 +249,13 @@ export async function resetSocialStatusAction(id: string, platform: string): Pro
   }
 }
 
-/** 解除某平台的帳號連結（把存的 token 刪掉）。要重連就再按一次連結。 */
-export async function disconnectSocialAction(platform: string): Promise<Result> {
+/** 手動把全部 IG／Threads 帳號續一次長效 token（平常發文前會自動續，這顆是給人放心按的）。粉專鑰匙不會過期。 */
+export async function refreshSocialTokenAction(): Promise<Result> {
   const denied = await guard();
   if (denied) return { ok: false, error: denied };
-  if (!isSocialPlatform(platform)) return { ok: false, error: "平台不對" };
-  try {
-    await disconnectSocialAccount(platform);
-    revalidateAll();
-    return { ok: true, message: `已解除 ${socialLabel(platform)} 的連結` };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "失敗" };
-  }
-}
-
-/** 手動續一次長效 token（平常發文前會自動續，這顆是給人放心按的）。 */
-export async function refreshSocialTokenAction(platform: string): Promise<Result> {
-  const denied = await guard();
-  if (denied) return { ok: false, error: denied };
-  if (!isSocialPlatform(platform)) return { ok: false, error: "平台不對" };
-  const r = await refreshSocialTokenIfNeeded(platform);
+  const lines = await refreshAllIdentityTokens();
   revalidateAll();
-  if (r.refreshed) return { ok: true, message: "已續 60 天" };
-  return { ok: true, message: r.note ? `沒續：${r.note}` : "還不用續（剩超過 20 天）" };
+  return { ok: true, message: lines.length ? lines.join("；") : "還沒有 IG／Threads 帳號" };
 }
 
 /**
@@ -560,19 +545,36 @@ export async function archiveNonHailineAction(identityId?: string): Promise<Resu
  */
 async function resolveScheduleIdentity(
   raw: string | undefined,
-): Promise<{ ok: true; identity: FbIdentityRow; warn: string } | { ok: false; error: string }> {
+  opts: { allowPage?: boolean } = {},
+): Promise<{ ok: true; identity: FbIdentityRow; parent: FbIdentityRow | null; warn: string } | { ok: false; error: string }> {
   const identity = await getIdentity(raw);
   if (!identity) return { ok: false, error: "找不到這個發文身分（可能被刪掉了），重新整理頁面再選" };
   if (identity.is_active !== 1) return { ok: false, error: `發文身分「${identity.name}」已停用，到「發文身分」頁重新啟用才能排` };
+  // 2026-10-09：以粉專身分發到社團（只有一般貼文）——借「管理它的個人帳號」的登入檔
+  if (identity.kind === "page" && opts.allowPage) {
+    if (!identity.parent_identity_id) {
+      return { ok: false, error: `粉專「${identity.name}」還沒設定「用哪個個人帳號切換發社團」，到「發文身分」頁的粉專卡片選一個` };
+    }
+    const parent = await getIdentity(identity.parent_identity_id);
+    if (!parent || parent.kind !== "personal" || parent.is_active !== 1) {
+      return { ok: false, error: `粉專「${identity.name}」設定的個人帳號不存在或已停用，到「發文身分」頁重選` };
+    }
+    const st = loginStateOf(parent);
+    const warn =
+      parent.is_default !== 1 && st !== "ok"
+        ? ` ⚠️ 桌機回報「${parent.name}」${st === "missing" ? "還沒登入或登入失效" : "登入狀態還沒確認"}。`
+        : "";
+    return { ok: true, identity, parent, warn };
+  }
   if (identity.kind !== "personal") {
-    return { ok: false, error: `「${identity.name}」是粉絲專頁，粉專發文還沒開放（要先設定官方 API）` };
+    return { ok: false, error: `「${identity.name}」不是個人帳號，這裡發不了${identity.kind === "page" ? "（Marketplace 只能用個人帳號）" : ""}` };
   }
   const state = loginStateOf(identity);
   const warn =
     identity.is_default !== 1 && state !== "ok"
       ? ` ⚠️ 桌機回報「${identity.name}」${state === "missing" ? "還沒登入或登入失效" : "登入狀態還沒確認"}——到點發不出去的話，先到「發文身分」頁照步驟登入。`
       : "";
-  return { ok: true, identity, warn };
+  return { ok: true, identity, parent: null, warn };
 }
 
 export async function scheduleTaskAction(input: {
@@ -591,6 +593,11 @@ export async function scheduleTaskAction(input: {
   shareThreads?: boolean;
   /** 2026-10-07 發文身分：用哪個身分發。不給＝主帳號（跟加這個功能之前一模一樣）。 */
   identityId?: string;
+  /**
+   * 2026-10-09：同時發到哪些官方 API 帳號（粉專動態／IG／Threads，可以好幾組、自由勾）。
+   * 只給身分 id，通路從身分種類推（不信任前端傳的種類）。有給這個就不看 shareIg／shareThreads。
+   */
+  apiIdentityIds?: string[];
 }): Promise<Result> {
   const denied = await guard();
   if (denied) return { ok: false, error: denied };
@@ -602,11 +609,15 @@ export async function scheduleTaskAction(input: {
   const runAt = input.runNow ? new Date() : parseLocalDateTime(input.runAt);
   if (!runAt) return { ok: false, error: "時間格式不對" };
 
-  const idRes = await resolveScheduleIdentity(input.identityId);
+  const idRes = await resolveScheduleIdentity(input.identityId, { allowPage: input.channel === "post" });
   if (!idRes.ok) return { ok: false, error: idRes.error };
   const identityId = normalizeIdentityId(idRes.identity.id); // 主帳號＝null
   const isMain = identityId === null;
-  const who = isMain ? "" : `（用「${idRes.identity.name}」發）`;
+  const who = isMain
+    ? ""
+    : idRes.identity.kind === "page"
+      ? `（以粉專「${idRes.identity.name}」身分發社團，用「${idRes.parent?.name}」的登入切換）`
+      : `（用「${idRes.identity.name}」發）`;
 
   // Marketplace（Phase 4，2026-09-06）：到點桌機 runner 會跑 post-marketplace.mjs 真的發。
   // 一定是全自動（沒人在旁邊按「發佈」），所以 autoPublish 恆為 true。
@@ -647,12 +658,34 @@ export async function scheduleTaskAction(input: {
     }
   }
 
-  // IG／Threads 是整個系統只連一組的官方 API 帳號，只跟主帳號綁在一起：
-  // 其他身分排的任務不能再勾（否則同一則文案每個身分各發一次 IG／Threads＝同一篇洗好幾遍）
-  const shareIg = isMain && Boolean(input.shareIg);
-  const shareThreads = isMain && Boolean(input.shareThreads);
-  if (!input.postToTimeline && input.groupIds.length === 0 && !shareIg && !shareThreads) {
-    return { ok: false, error: "至少要挑一個地方（自己的動態、社團、IG 或 Threads）" };
+  // 2026-10-09：官方 API 目標（粉專動態／IG／Threads）每一組帳號自由勾，不再綁主帳號。
+  //   舊的 shareIg／shareThreads（沒指定帳號）只在沒給 apiIdentityIds 時沿用，到點只有「剛好一組」才發得出去。
+  const apiTargets: Array<{ channel: "page" | "ig" | "threads"; identityId: string }> = [];
+  const apiNames: string[] = [];
+  for (const raw of [...new Set(input.apiIdentityIds ?? [])]) {
+    const acc = await getIdentity(raw);
+    if (!acc || (acc.kind !== "page" && acc.kind !== "ig" && acc.kind !== "threads")) {
+      return { ok: false, error: "勾的粉專／IG／Threads 帳號有一個找不到了，重新整理頁面再勾" };
+    }
+    if (acc.is_active !== 1) return { ok: false, error: `「${acc.name}」已停用，到「發文身分」頁重新啟用才能勾` };
+    if (!(await getIdentityToken(acc.id))) return { ok: false, error: `「${acc.name}」沒有授權鑰匙，到「發文身分」頁重新連結` };
+    apiTargets.push({ channel: acc.kind, identityId: acc.id });
+    apiNames.push(`${acc.kind === "page" ? "粉專" : acc.kind === "ig" ? "IG" : "Threads"}「${acc.name}」`);
+  }
+  const legacyIg = !input.apiIdentityIds && isMain && Boolean(input.shareIg);
+  const legacyThreads = !input.apiIdentityIds && isMain && Boolean(input.shareThreads);
+  if (legacyIg) apiTargets.push({ channel: "ig", identityId: "" });
+  if (legacyThreads) apiTargets.push({ channel: "threads", identityId: "" });
+  const shareIg = apiTargets.some((t) => t.channel === "ig");
+  const shareThreads = apiTargets.some((t) => t.channel === "threads");
+
+  // 以粉專身分發：沒有「粉專自己的 FB 動態（瀏覽器）」這個目標——要發粉專動態請勾下面的官方 API 粉專
+  const isPageBrowser = idRes.identity.kind === "page";
+  if (isPageBrowser && input.postToTimeline) {
+    return { ok: false, error: "以粉專身分只發社團；粉專自己的動態請勾「同時發到」裡的粉專（官方 API，比開瀏覽器安全）" };
+  }
+  if (!input.postToTimeline && input.groupIds.length === 0 && apiTargets.length === 0) {
+    return { ok: false, error: "至少要挑一個地方（動態、社團、粉專、IG 或 Threads）" };
   }
   // IG／Threads 的內文有硬上限，排程當下就擋，不要到點才在 runner 那邊失敗
   if (shareIg || shareThreads) {
@@ -661,17 +694,22 @@ export async function scheduleTaskAction(input: {
     if (shareThreads && socialLength(v.threads.text) > THREADS_TEXT_LIMIT) return { ok: false, error: `Threads 版本超過 ${THREADS_TEXT_LIMIT} 字，先去貼文庫那則的 Threads 分頁改短` };
   }
 
+  // 社團清單屬於「真正登入的那個個人帳號」：粉專身分＝它借的個人帳號那份
+  const groupOwnerId = isPageBrowser ? normalizeIdentityId(idRes.parent?.id) : identityId;
+  const groupOwnerName = isPageBrowser ? idRes.parent?.name || "" : idRes.identity.name;
   const groups: Array<{ id: string; name: string; url: string }> = [];
   for (const gid of input.groupIds) {
     const g = await getFbGroup(gid);
     if (!g) continue;
     // 🔴 社團清單是每個身分各自的（各帳號加入的社團不一樣）。挑到別的身分的社團就擋下來——
     //    拿 A 帳號的登入去發 B 帳號才有的社團，輕則發不進去、重則發到不該發的地方。
-    if (!sameIdentity(g.identity_id, identityId)) {
-      return { ok: false, error: `社團「${g.name}」不是「${idRes.identity.name}」的社團，重新整理頁面再挑一次` };
+    if (!sameIdentity(g.identity_id, groupOwnerId)) {
+      return { ok: false, error: `社團「${g.name}」不是「${groupOwnerName}」的社團，重新整理頁面再挑一次` };
     }
     groups.push({ id: g.id, name: g.name, url: g.url });
   }
+  // 只有官方 API 目標、沒有 FB 瀏覽器目標 → 瀏覽器那段不用任何身分（存主帳號＝NULL），免得 runner 去檢查用不到的登入
+  const browserIdentityId = input.postToTimeline || groups.length ? identityId : null;
 
   try {
     // 擬真抖動：排定時間的才抖，「立即發佈」不抖 —— 跟 Marketplace 那支同一個規則
@@ -685,16 +723,15 @@ export async function scheduleTaskAction(input: {
       groups,
       autoPublish: input.autoPublish,
       jitterSec,
-      shareIg,
-      shareThreads,
-      identityId,
+      apiTargets,
+      identityId: browserIdentityId,
     });
     await setDraftStatus(input.draftId, "post", "scheduled");
     revalidateAll();
     const 抖動 = jitterWindowLabel(runAt);
     const 尾 = 抖動 ? `；擬真抖動：實際會在 ${抖動}（不會剛好準點，這是故意的）` : "";
     const 撞 = await clashWarning(id, draft.title, "post", runAt);
-    const 社群 = [shareIg ? "Instagram" : "", shareThreads ? "Threads" : ""].filter(Boolean).join("＋");
+    const 社群 = [...apiNames, legacyIg ? "Instagram" : "", legacyThreads ? "Threads" : ""].filter(Boolean).join("＋");
     const 社群尾 = 社群 ? `；${社群} 到點由桌機 runner 用官方 API 發（不開瀏覽器）` : "";
     const 只有社群 = !input.postToTimeline && groups.length === 0;
     return {
